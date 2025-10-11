@@ -1,13 +1,13 @@
 """
 Flask GUI for Vocal Agent
-A simple web interface for the voice-driven AI assistant
+A desktop application interface for the voice-driven AI assistant
 """
 
 from flask import Flask, render_template, jsonify, request
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -45,5 +45,31 @@ def process_voice():
     return jsonify(response)
 
 if __name__ == '__main__':
-    logger.info("Starting Vocal Agent Frontend...")
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    logger.info("Starting Vocal Agent Desktop GUI...")
+    
+    try:
+        # Import FlaskUI here to avoid issues if not available
+        from flaskwebgui import FlaskUI
+        
+        # Initialize FlaskUI for desktop-like experience
+        ui = FlaskUI(
+            app=app,
+            server="flask",
+            width=1200,
+            height=800,
+            port=5000
+        )
+        
+        # Start the desktop GUI
+        logger.info("Opening desktop application window...")
+        ui.run()
+        
+    except ImportError:
+        logger.warning("FlaskUI not available. Starting standard Flask server...")
+        logger.info("Please open http://127.0.0.1:5000 in your browser")
+        app.run(debug=True, host='127.0.0.1', port=5000)
+    except Exception as e:
+        logger.warning(f"FlaskUI failed to start: {e}")
+        logger.info("Falling back to standard Flask server...")
+        logger.info("Please open http://127.0.0.1:5000 in your browser")
+        app.run(debug=True, host='127.0.0.1', port=5000)

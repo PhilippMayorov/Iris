@@ -29,6 +29,7 @@ pydantic>=2.4.0
 
 # Flask web framework for GUI
 flask>=3.0.0
+flaskwebgui>=1.1.7
 
 # HTTP client
 httpx>=0.25.0

@@ -1,30 +1,29 @@
 # Vocal Agent Frontend
 
-A simple Flask-based web interface for the Vocal Agent voice-driven AI assistant.
-
-## Features
-
-- **Hello World Interface**: Clean, modern web interface for testing
-- **API Testing**: Built-in buttons to test backend connectivity
-- **Voice Command Simulation**: Test voice command processing
-- **Health Check Endpoint**: Monitor frontend status
+A Flask-based desktop application for the Vocal Agent voice-driven AI assistant, featuring a native desktop GUI experience.
 
 ## Quick Start
 
 1. **Install Dependencies**:
 
    ```bash
-   pip install flask>=3.0.0
+   pip install flask>=3.0.0 flaskwebgui>=1.1.7
    ```
 
-2. **Run the Frontend**:
+2. **Run the Desktop App**:
 
    ```bash
+   # Activate virtual environment
+   source .venv/bin/activate
+
+   # Launch desktop GUI
    python frontend/app.py
    ```
 
-3. **Access the Interface**:
-   Open your browser to: http://127.0.0.1:5000
+3. **Desktop Experience**:
+   - 🚀 **Automatic Launch**: App opens in a dedicated desktop window
+   - 📏 **Window Size**: 1200x800 pixels, resizable
+   - 🔄 **Fallback**: If desktop mode fails, falls back to browser at http://127.0.0.1:5000
 
 ## API Endpoints
 
