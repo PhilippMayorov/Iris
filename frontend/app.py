@@ -46,4 +46,4 @@ def process_voice():
 
 if __name__ == '__main__':
     logger.info("Starting Vocal Agent Frontend...")
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5001)
