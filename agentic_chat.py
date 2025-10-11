@@ -30,8 +30,18 @@ try:
             print("Please set your API key: export ASI_ONE_API_KEY='your_key_here'")
             sys.exit(1)
         
-        # Parse command line arguments for model selection
+        # Parse command line arguments for model selection and personality
         model = "asi1-agentic"  # Default - Change this to your preferred model
+        
+        # Quick personality switcher - uncomment one of these lines to set default:
+        # personality = "personalities/ridiculous_pirate.txt"    # 🏴‍☠️ Pirate
+        # personality = "personalities/formal_butler.txt"        # 🎩 Butler  
+        # personality = "personalities/hyperactive_puppy.txt"    # 🐕 Puppy
+        # personality = "personalities/friendly_assistant.txt"   # 😊 Friendly
+        # personality = "personalities/professional_expert.txt"  # 👔 Professional
+        # personality = "personalities/creative_collaborator.txt" # 🎨 Creative
+        personality = None  # Default: uses built-in professional personality
+        
         if len(sys.argv) > 1:
             model = sys.argv[1]
             if model not in ASIOneClient.AGENTIC_MODELS:
@@ -39,8 +49,28 @@ try:
                 print(f"Available models: {ASIOneClient.AGENTIC_MODELS}")
                 sys.exit(1)
         
+        # Check for custom personality file
+        if len(sys.argv) > 2:
+            personality_file = sys.argv[2]
+            try:
+                with open(personality_file, 'r') as f:
+                    personality = f.read().strip()
+                print(f"📝 Loaded custom personality from: {personality_file}")
+            except FileNotFoundError:
+                print(f"❌ Personality file not found: {personality_file}")
+                sys.exit(1)
+            except Exception as e:
+                print(f"❌ Error reading personality file: {e}")
+                sys.exit(1)
+        
+        # Check for custom log file
+        log_file = None
+        if len(sys.argv) > 3:
+            log_file = sys.argv[3]
+            print(f"📝 Using custom log file: {log_file}")
+        
         # Start agentic chat
-        chat = AgenticChat(model)
+        chat = AgenticChat(model, personality, log_file)
         chat.run()
     
     if __name__ == "__main__":
