@@ -262,7 +262,9 @@
         </div>
       </div>
 
-      <p class="instruction-text">Or click cmd + "space" to start listening</p>
+      <p class="instruction-text" id="instructionText">
+        Click to start listening, click again to stop
+      </p>
     </div>
 
     <!-- Integration Popup -->
@@ -299,21 +301,204 @@
 
     <script>
       let isListening = false
+      let recognition = null
+      let finalTranscript = ''
+
+      // Initialize Web Speech API
+      function initializeSpeechRecognition() {
+        try {
+          // Check for browser support
+          const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition
+
+          if (!SpeechRecognition) {
+            console.error('Speech recognition not supported in this browser')
+            return false
+          }
+
+          recognition = new SpeechRecognition()
+          recognition.continuous = true
+          recognition.interimResults = true
+          recognition.lang = 'en-US'
+
+          recognition.onstart = () => {
+            console.log('Speech recognition started')
+          }
+
+          recognition.onresult = (event) => {
+            let interimTranscript = ''
+            finalTranscript = ''
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              const transcript = event.results[i][0].transcript
+              if (event.results[i].isFinal) {
+                finalTranscript += transcript
+              } else {
+                interimTranscript += transcript
+              }
+            }
+
+            console.log('Interim:', interimTranscript)
+            console.log('Final so far:', finalTranscript)
+          }
+
+          recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error)
+          }
+
+          recognition.onend = () => {
+            console.log('Speech recognition ended')
+            if (finalTranscript.trim()) {
+              processTranscribedText(finalTranscript.trim())
+            }
+          }
+
+          return true
+        } catch (error) {
+          console.error('Error initializing speech recognition:', error)
+          return false
+        }
+      }
 
       // Toggle listening state for Siri circle
       function toggleListening() {
         const siriCircle = document.getElementById('siriCircle')
-        isListening = !isListening
+        const instructionText = document.getElementById('instructionText')
 
-        if (isListening) {
+        if (!isListening) {
+          // Start listening
+          if (!recognition && !initializeSpeechRecognition()) {
+            alert('Speech recognition not supported or failed to initialize')
+            return
+          }
+
+          finalTranscript = ''
+          recognition.start()
+          isListening = true
           siriCircle.classList.add('listening')
+          instructionText.textContent =
+            'Listening... Click again to stop and process'
           console.log('Started listening...')
-          // Here you would integrate with speech recognition
-          simulateVoiceCommand()
         } else {
+          // Stop listening and start processing
+          recognition.stop()
+          isListening = false
           siriCircle.classList.remove('listening')
-          console.log('Stopped listening...')
+          instructionText.textContent = 'Processing your voice command...'
+          console.log('Stopped listening, starting processing...')
         }
+      }
+
+      // Process transcribed text through the voice pipeline
+      async function processTranscribedText(transcribedText) {
+        try {
+          console.log('Processing speech through voice pipeline...')
+          console.log('Transcribed:', transcribedText)
+
+          // Step 1: Refine speech with Gemini
+          const refinement = await refineSpeech(transcribedText)
+          if (!refinement.success) {
+            throw new Error(refinement.error)
+          }
+
+          console.log('Refined:', refinement.refined_command)
+
+          // Step 2: Process with ASI:One
+          const processing = await processCommand(refinement.refined_command)
+          if (!processing.success) {
+            throw new Error(processing.error)
+          }
+
+          console.log('ASI:One Response:', processing.asi_one_response)
+
+          // Show results to user
+          displayResults({
+            raw_speech: transcribedText,
+            refined_command: refinement.refined_command,
+            asi_response: processing.asi_one_response,
+          })
+
+          // Reset instruction text
+          document.getElementById('instructionText').textContent =
+            'Click to start listening, click again to stop • Cmd+Space works too'
+        } catch (error) {
+          console.error('Voice processing error:', error)
+          alert(`Voice processing failed: ${error.message}`)
+
+          // Reset instruction text on error
+          document.getElementById('instructionText').textContent =
+            'Click to start listening, click again to stop • Cmd+Space works too'
+        }
+      }
+
+      // Speech recognition now handled by Web Speech API above
+
+      // Call Gemini refinement API
+      async function refineSpeech(rawSpeech) {
+        const response = await fetch('/api/refine-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw_speech: rawSpeech }),
+        })
+        return await response.json()
+      }
+
+      // Call ASI:One processing API
+      async function processCommand(refinedCommand) {
+        const response = await fetch('/api/process-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refined_command: refinedCommand }),
+        })
+        return await response.json()
+      }
+
+      // Display results to user
+      function displayResults(results) {
+        // Create a temporary display area for results
+        const existingResults = document.getElementById('voice-results')
+        if (existingResults) {
+          existingResults.remove()
+        }
+
+        const resultsDiv = document.createElement('div')
+        resultsDiv.id = 'voice-results'
+        resultsDiv.style.cssText = `
+          position: fixed;
+          bottom: 20px;
+          left: 20px;
+          right: 20px;
+          background: white;
+          border-radius: 15px;
+          padding: 20px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+          max-height: 300px;
+          overflow-y: auto;
+          z-index: 999;
+        `
+
+        resultsDiv.innerHTML = `
+          <button onclick="this.parentElement.remove()" style="float: right; background: none; border: none; font-size: 20px; cursor: pointer;">×</button>
+          <h3 style="margin: 0 0 15px 0; color: #333;">Voice Processing Results</h3>
+          <div style="margin-bottom: 10px;">
+            <strong>Raw Speech:</strong> "${results.raw_speech}"
+          </div>
+          <div style="margin-bottom: 10px;">
+            <strong>Refined Command:</strong> "${results.refined_command}"
+          </div>
+          <div>
+            <strong>AI Response:</strong> ${results.asi_response.suggested_action}
+          </div>
+        `
+
+        document.body.appendChild(resultsDiv)
+
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+          if (document.getElementById('voice-results')) {
+            resultsDiv.remove()
+          }
+        }, 10000)
       }
 
       // Integration popup functions
@@ -351,40 +536,47 @@
         }
       })
 
-      // API functions (keeping for backend integration)
-      async function testAPI() {
-        try {
-          const response = await fetch('/api/health')
-          const data = await response.json()
-          console.log('API Health Check:', data)
-        } catch (error) {
-          console.error('API Error:', error.message)
-        }
-      }
+      // Update instruction text to include keyboard shortcut
+      document.addEventListener('DOMContentLoaded', function () {
+        const instructionText = document.getElementById('instructionText')
+        instructionText.textContent =
+          'Click to start listening, click again to stop • Cmd+Space works too'
+      })
 
-      async function simulateVoiceCommand() {
-        const testCommand = 'Schedule a meeting for tomorrow at 2 PM'
-        try {
-          const response = await fetch('/api/process_voice', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ command: testCommand }),
-          })
-          const data = await response.json()
-          console.log('Voice Command Response:', data)
+    //   // API functions (keeping for backend integration)
+    //   async function testAPI() {
+    //     try {
+    //       const response = await fetch('/api/health')
+    //       const data = await response.json()
+    //       console.log('API Health Check:', data)
+    //     } catch (error) {
+    //       console.error('API Error:', error.message)
+    //     }
+    //   }
 
-          // Stop listening after processing
-          setTimeout(() => {
-            const siriCircle = document.getElementById('siriCircle')
-            siriCircle.classList.remove('listening')
-            isListening = false
-          }, 2000)
-        } catch (error) {
-          console.error('Voice Command Error:', error.message)
-        }
-      }
+    //   async function simulateVoiceCommand() {
+    //     const testCommand = 'Schedule a meeting for tomorrow at 2 PM'
+    //     try {
+    //       const response = await fetch('/api/process_voice', {
+    //         method: 'POST',
+    //         headers: {
+    //           'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({ command: testCommand }),
+    //       })
+    //       const data = await response.json()
+    //       console.log('Voice Command Response:', data)
+
+    //       // Stop listening after processing
+    //       setTimeout(() => {
+    //         const siriCircle = document.getElementById('siriCircle')
+    //         siriCircle.classList.remove('listening')
+    //         isListening = false
+    //       }, 2000)
+    //     } catch (error) {
+    //       console.error('Voice Command Error:', error.message)
+    //     }
+    //   }
     </script>
   </body>
 </html>
