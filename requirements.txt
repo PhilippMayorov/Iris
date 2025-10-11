@@ -1,0 +1,61 @@
+# Vocal Agent - Python Dependencies
+
+# Core uAgents framework
+uagents>=0.12.0
+fetch-ai-ledger>=1.0.0
+
+# API clients and integrations
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+
+# Gemini AI API
+google-generativeai>=0.3.0
+
+# ElevenLabs Speech-to-Text API
+elevenlabs>=0.2.24
+
+# Spotify Web API
+spotipy>=2.22.1
+
+# Email and calendar utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Web framework for HTTP endpoints
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.4.0
+
+# Flask web framework for GUI
+flask>=3.0.0
+
+# HTTP client
+httpx>=0.25.0
+requests>=2.31.0
+
+# Async utilities
+asyncio-mqtt>=0.13.0
+
+# Apple/macOS integrations (optional)
+pyobjc-framework-EventKit>=10.0  # macOS Calendar
+pyobjc-framework-Contacts>=10.0  # macOS Contacts
+pyobjc-framework-ScriptingBridge>=10.0  # Apple Notes
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.9.0
+flake8>=6.1.0
+mypy>=1.6.0
+
+# Logging and monitoring
+loguru>=0.7.2
+structlog>=23.2.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Data validation and serialization
+marshmallow>=3.20.0
+jsonschema>=4.19.0

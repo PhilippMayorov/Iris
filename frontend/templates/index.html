@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vocal Agent - Voice AI Assistant</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+          sans-serif;
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .container {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 600px;
+        width: 90%;
+      }
+
+      h1 {
+        color: #333;
+        font-size: 2.5em;
+        margin-bottom: 20px;
+        font-weight: 300;
+      }
+
+      .subtitle {
+        color: #666;
+        font-size: 1.2em;
+        margin-bottom: 30px;
+      }
+
+      .status {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        background: #28a745;
+        border-radius: 50%;
+        margin-right: 10px;
+      }
+
+      .test-button {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 25px;
+        font-size: 1.1em;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin: 10px;
+      }
+
+      .test-button:hover {
+        background: #5a67d8;
+        transform: translateY(-2px);
+      }
+
+      .response-area {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+        min-height: 60px;
+        display: none;
+      }
+
+      .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-top: 30px;
+      }
+
+      .feature {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 4px solid #667eea;
+      }
+
+      .feature h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+      }
+
+      .feature p {
+        margin: 0;
+        color: #666;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎤 Vocal Agent</h1>
+      <p class="subtitle">Voice-Driven AI Assistant with uAgents</p>
+
+      <div class="status">
+        <span class="status-indicator"></span>
+        <strong>Frontend Status:</strong> Running and Ready
+      </div>
+
+      <button class="test-button" onclick="testAPI()">
+        Test API Connection
+      </button>
+      <button class="test-button" onclick="simulateVoiceCommand()">
+        Simulate Voice Command
+      </button>
+
+      <div id="response-area" class="response-area">
+        <h4>Response:</h4>
+        <div id="response-content"></div>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <h3>📅 Calendar</h3>
+          <p>Schedule meetings and manage events</p>
+        </div>
+        <div class="feature">
+          <h3>📧 Email</h3>
+          <p>Send and manage email communications</p>
+        </div>
+        <div class="feature">
+          <h3>📝 Notes</h3>
+          <p>Create and organize your notes</p>
+        </div>
+        <div class="feature">
+          <h3>🎵 Spotify</h3>
+          <p>Control music playback</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      async function testAPI() {
+        try {
+          const response = await fetch('/api/health')
+          const data = await response.json()
+          showResponse('API Health Check', data)
+        } catch (error) {
+          showResponse('API Error', { error: error.message })
+        }
+      }
+
+      async function simulateVoiceCommand() {
+        const testCommand = 'Schedule a meeting for tomorrow at 2 PM'
+        try {
+          const response = await fetch('/api/process_voice', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ command: testCommand }),
+          })
+          const data = await response.json()
+          showResponse('Voice Command Test', data)
+        } catch (error) {
+          showResponse('Voice Command Error', { error: error.message })
+        }
+      }
+
+      function showResponse(title, data) {
+        const responseArea = document.getElementById('response-area')
+        const responseContent = document.getElementById('response-content')
+
+        responseContent.innerHTML = `
+                <h5>${title}</h5>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `
+
+        responseArea.style.display = 'block'
+      }
+    </script>
+  </body>
+</html>
