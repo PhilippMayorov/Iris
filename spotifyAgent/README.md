@@ -4,18 +4,59 @@ A specialized uAgent for creating and managing Spotify playlists based on user v
 
 ## Features
 
+- **ASI:One Integration**: Compatible with ASI:One chat interface and discovery
+- **Real Spotify API**: Full integration with Spotify Web API for authentic music data
+- **Natural Language Processing**: Understands conversational requests with AI-powered intent analysis
 - **Playlist Creation**: Creates custom playlists based on genre, mood, or specific requirements
-- **Music Search**: Searches music catalog for songs, artists, albums
+- **Playlist Retrieval**: View and browse your existing Spotify playlists
+- **Random Song Selection**: Get random songs from any playlist (including Liked Songs)
+- **Music Search**: Searches music catalog for songs, artists, albums using real Spotify data
+- **Music Recommendations**: Provides personalized music suggestions for different activities
 - **Genre Support**: Pop, Rock, Hip-Hop, Electronic, Chill, and more
-- **Voice Integration**: Responds to natural language commands from the vocal core agent
+- **Chat Protocol**: Uses standardized chat protocol for seamless communication
+- **Expert Assistant**: Specialized knowledge in Spotify playlists and music curation
 
-## Supported Commands
+## Supported Commands (Natural Language)
+
+### Playlist Creation
 
 - "Create a pop playlist with 20 songs"
 - "Make a chill playlist for studying"
 - "Create a workout playlist with electronic music"
-- "Search for songs by The Weeknd"
 - "Make a playlist called 'Road Trip' with rock music"
+- "Build me a party playlist"
+
+### Music Search
+
+- "Search for songs by The Weeknd"
+- "Find music by Queen"
+- "Look for electronic tracks"
+
+### Music Recommendations
+
+- "Recommend workout music"
+- "What should I listen to for studying?"
+- "Suggest some party songs"
+- "Give me recommendations for driving music"
+
+### Playlist Management
+
+- "Show me my playlists"
+- "List my Spotify playlists"
+- "What playlists do I have?"
+
+### Random Song Selection
+
+- "Give me a song from Liked Songs"
+- "Random song from my workout playlist"
+- "Pick a song from my chill playlist"
+- "Get me a random track from Road Trip"
+
+### ASI:One Discovery Queries
+
+- "Connect me to an agent that creates Spotify playlists"
+- "I need help with music recommendations"
+- "Find an expert for playlist creation"
 
 ## Agent Configuration
 
@@ -70,6 +111,7 @@ This agent is configured as a Mailbox Agent for Agentverse integration:
 5. **Interact with other agents** through Agentverse platform
 
 ### Agent Configuration
+
 - **Mailbox**: Enabled (`mailbox=True`)
 - **Publishing**: Agent details published to Agentverse
 - **README**: Automatically published for documentation
@@ -79,6 +121,7 @@ This agent is configured as a Mailbox Agent for Agentverse integration:
 Send messages to this agent using the following formats:
 
 ### Create Playlist
+
 ```python
 CreatePlaylistMessage(
     playlist_name="Summer Hits",
@@ -90,6 +133,7 @@ CreatePlaylistMessage(
 ```
 
 ### Search Music
+
 ```python
 SearchMusicMessage(
     query="The Weeknd",
@@ -99,10 +143,18 @@ SearchMusicMessage(
 )
 ```
 
+## Recent Updates
+
+- ✅ **Real Spotify API Integration**: Full authentication and playlist management
+- ✅ **Playlist Retrieval**: Browse and view your existing Spotify playlists
+- ✅ **Random Song Selection**: Get random songs from any playlist including Liked Songs
+- ✅ **AI-Powered Intent Analysis**: ASI:One integration for intelligent request processing
+- ✅ **Enhanced Error Handling**: Graceful handling of API errors and edge cases
+
 ## Future Enhancements
 
-- Real Spotify Web API integration
-- User authentication and personal playlists
-- Advanced music recommendation algorithms
-- Collaborative playlist features
+- Advanced music recommendation algorithms with user listening history
+- Collaborative playlist features and sharing
+- Playlist analytics and insights
+- Integration with other music services
 - Direct Agentverse hosted deployment option

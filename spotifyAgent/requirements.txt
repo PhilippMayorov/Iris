@@ -1,15 +1,15 @@
 # Spotify Agent Dependencies
-# Core uAgents framework
+# Core uAgents framework with chat protocol
 uagents>=0.1.0
+
+# Chat protocol is included in uagents_core
+# uagents_core (included with uagents)
 
 # For future Spotify Web API integration
 spotipy>=2.22.1
 
 # Standard dependencies
 pydantic>=2.0.0
-asyncio
-typing
-datetime
-json
-random
-uuid
+
+# Python built-ins (no installation needed)
+# asyncio, typing, datetime, json, random, uuid, re
