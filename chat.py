@@ -42,7 +42,7 @@ try:
             return {
                 "email": {
                     "keywords": ["email", "send email", "mail", "message", "correspondence"],
-                    "agent_address": "agent1qw6kgumlfqp9drr54qsfngdkz50vgues3u7sewg2fgketekqk8hz500ytg3",
+                    "agent_address": "better-gmail-agent",
                     "description": "Email sending and management tasks",
                     "examples": ["send an email", "email my friend", "send a message", "mail someone"]
                 },

@@ -1,0 +1,10 @@
+{
+    "agent1qt8jvw04wm4qv6w949vtgjt2p6mz4pdp3kt0ec4j5dxlu3ahmmy5ud7mllx": {
+        "handle_test_email_request": {
+            "time_window_start": 1760254769.0,
+            "window_size_minutes": 60,
+            "requests": 8,
+            "max_requests": 100
+        }
+    }
+}
