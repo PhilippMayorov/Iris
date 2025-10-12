@@ -212,8 +212,31 @@ def process_music_request(voice_input):
         # Process Spotify response through Gemini for user-friendly output
         if genai and os.getenv('GEMINI_API_KEY'):
             try:
+                # Get system information for context
+                system_info = get_system_info()
+                
+                # Build system context for music processing
+                system_context = ""
+                if system_info:
+                    spotify_auth = system_info['current_authentications'].get('spotify', {})
+                    spotify_integration = system_info['available_integrations'].get('spotify', {})
+                    
+                    system_context = f"""
+
+## SYSTEM INFORMATION
+You are Iris, an AI assistant with access to Spotify integration:
+
+### Spotify Integration Status:
+- **Status**: {'✅ Connected' if spotify_auth.get('authenticated', False) else '❌ Not connected'}
+- **Capabilities**: {', '.join(spotify_integration.get('capabilities', []))}
+"""
+                    if spotify_auth.get('authenticated') and 'user' in spotify_auth:
+                        system_context += f"- **Connected as**: {spotify_auth['user'].get('display_name', 'Unknown')}\n"
+                
                 # Create a prompt to make the Spotify response more user-friendly
                 music_processing_prompt = f"""You are Iris, a helpful AI assistant. The user made a music request, and here's what the music service found:
+
+{system_context}
 
 User's request: {voice_input}
 Music service response: {spotify_response}
@@ -289,6 +312,23 @@ Respond as Iris:"""
         logger.error(f"Error processing music request: {str(e)}")
         return "I'm having trouble processing your music request. To use music features, please click the 'Integrate with apps' button in the top right corner and connect your Spotify account."
 
+# Get system information for Gemini
+def get_system_info():
+    """
+    Get current system information about available integrations and their status
+    """
+    try:
+        # Get system info from the endpoint we just created
+        response = requests.get('http://127.0.0.1:5001/api/system-info', timeout=5)
+        if response.status_code == 200:
+            return response.json()['system_info']
+        else:
+            logger.warning("Failed to get system info from endpoint")
+            return None
+    except Exception as e:
+        logger.warning(f"Could not get system info: {e}")
+        return None
+
 # Get direct response from Gemini API
 def get_gemini_direct_response(voice_input):
     """
@@ -311,19 +351,63 @@ def get_gemini_direct_response(voice_input):
     try:
         logger.info("Making Gemini API call for direct response...")
         
-        # Enhanced prompt for direct response with Spotify integration guidance and markdown support
+        # Get system information
+        system_info = get_system_info()
+        
+        # Build system context
+        system_context = ""
+        if system_info:
+            system_context = f"""
+
+## SYSTEM INFORMATION
+You are Iris, an AI assistant with access to the following integrations and capabilities:
+
+### Available Integrations:
+"""
+            for integration_id, integration in system_info['available_integrations'].items():
+                auth_status = system_info['current_authentications'].get(integration_id, {})
+                status_icon = "✅" if auth_status.get('authenticated', False) else "❌"
+                
+                system_context += f"- {status_icon} **{integration['name']}** ({integration['icon']}): {integration['description']}\n"
+                system_context += f"  - Capabilities: {', '.join(integration['capabilities'])}\n"
+                if auth_status.get('authenticated'):
+                    if 'user' in auth_status:
+                        system_context += f"  - Connected as: {auth_status['user'].get('display_name', 'Unknown')}\n"
+                else:
+                    system_context += f"  - Status: {auth_status.get('status', 'Not connected')}\n"
+                system_context += "\n"
+            
+            system_context += f"""
+### System Status:
+- Frontend: {system_info['system_status']['frontend']}
+- Gemini AI: {system_info['system_status']['gemini_ai']}
+- Text-to-Speech: {system_info['system_status']['elevenlabs_tts']}
+- Speech Recognition: {system_info['system_status']['speech_recognition']}
+
+### AI Capabilities:
+- Natural Language Processing: {system_info['ai_capabilities']['natural_language_processing']}
+- Speech-to-Text: {system_info['ai_capabilities']['speech_to_text']}
+- Text-to-Speech: {system_info['ai_capabilities']['text_to_speech']}
+- Intent Recognition: {system_info['ai_capabilities']['intent_recognition']}
+- Multi-Agent Coordination: {system_info['ai_capabilities']['multi_agent_coordination']}
+"""
+        
+        # Enhanced prompt for direct response with system information
         direct_response_prompt = f"""You are Iris, a helpful AI assistant. The user has spoken to you via voice input. Respond naturally and helpfully to what they've said.
 
-Guidelines:
+{system_context}
+
+## RESPONSE GUIDELINES:
 1. Be conversational and friendly
 2. If they're asking for help with something, provide useful assistance
 3. If they're making a request, acknowledge it and offer to help
 4. Keep responses concise but informative
 5. If you're unsure what they want, ask for clarification
 6. Be helpful and proactive
-7. IMPORTANT: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
+7. **IMPORTANT**: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
+8. **INTEGRATION GUIDANCE**: If the user asks about capabilities or what you can do, reference the available integrations above. If they want to use a specific integration that's not connected, guide them to the "Integrate with apps" button.
 
-FORMATTING GUIDELINES:
+## FORMATTING GUIDELINES:
 - Use markdown formatting when appropriate to make your responses more readable
 - Use **bold** for emphasis on important points
 - Use *italics* for subtle emphasis
@@ -927,6 +1011,190 @@ def text_to_speech():
             'success': False,
             'error': f'Text-to-speech conversion failed: {str(e)}'
         }), 500
+
+@app.route('/api/system-info')
+def system_info():
+    """Get system information about available integrations and their status"""
+    try:
+        system_info = {
+            'available_integrations': {
+                'spotify': {
+                    'name': 'Spotify',
+                    'description': 'Music streaming service for playlist creation, music search, and playback control',
+                    'icon': '🎵',
+                    'capabilities': [
+                        'Create custom playlists',
+                        'Search for songs, artists, and albums',
+                        'Get music recommendations',
+                        'Manage existing playlists',
+                        'Random song selection from playlists'
+                    ],
+                    'endpoint': 'http://localhost:8005/chat',
+                    'status': 'available'
+                },
+                'gmail': {
+                    'name': 'Gmail',
+                    'description': 'Email service for composing, sending, and managing emails',
+                    'icon': '📧',
+                    'capabilities': [
+                        'Compose and send emails',
+                        'Read inbox messages',
+                        'Search emails',
+                        'Organize messages'
+                    ],
+                    'endpoint': 'http://localhost:8002/chat',
+                    'status': 'available'
+                },
+                'google_calendar': {
+                    'name': 'Google Calendar',
+                    'description': 'Calendar service for scheduling meetings and managing events',
+                    'icon': '📅',
+                    'capabilities': [
+                        'Schedule meetings and events',
+                        'Check availability',
+                        'Manage calendar events',
+                        'Set reminders'
+                    ],
+                    'endpoint': 'http://localhost:8001/chat',
+                    'status': 'available'
+                },
+                'notes': {
+                    'name': 'Notes',
+                    'description': 'Note-taking service for creating and organizing notes',
+                    'icon': '📝',
+                    'capabilities': [
+                        'Create notes',
+                        'Search existing notes',
+                        'Organize notes by category',
+                        'Edit and update notes'
+                    ],
+                    'endpoint': 'http://localhost:8003/chat',
+                    'status': 'available'
+                },
+                'discord': {
+                    'name': 'Discord',
+                    'description': 'Communication platform for sending messages and managing Discord interactions',
+                    'icon': '💬',
+                    'capabilities': [
+                        'Send messages to Discord channels',
+                        'Manage Discord server interactions',
+                        'User lookup and management'
+                    ],
+                    'endpoint': 'http://localhost:8004/chat',
+                    'status': 'available'
+                }
+            },
+            'current_authentications': {},
+            'system_status': {
+                'frontend': 'running',
+                'gemini_ai': 'available' if genai and os.getenv('GEMINI_API_KEY') else 'unavailable',
+                'elevenlabs_tts': 'available' if elevenlabs_client else 'unavailable',
+                'speech_recognition': 'available'
+            },
+            'ai_capabilities': {
+                'natural_language_processing': 'Available via Google Gemini',
+                'speech_to_text': 'Available via Web Speech API',
+                'text_to_speech': 'Available via ElevenLabs',
+                'intent_recognition': 'Available via Gemini AI',
+                'multi_agent_coordination': 'Available via uAgents protocol'
+            }
+        }
+        
+        # Check authentication status for each integration
+        try:
+            # Check Spotify authentication
+            spotify_status = check_spotify_auth_status()
+            system_info['current_authentications']['spotify'] = spotify_status
+        except Exception as e:
+            logger.warning(f"Could not check Spotify auth status: {e}")
+            system_info['current_authentications']['spotify'] = {
+                'authenticated': False,
+                'error': str(e)
+            }
+        
+        # For other integrations, we'll add status checks as they're implemented
+        system_info['current_authentications']['gmail'] = {'authenticated': False, 'status': 'not_configured'}
+        system_info['current_authentications']['google_calendar'] = {'authenticated': False, 'status': 'not_configured'}
+        system_info['current_authentications']['notes'] = {'authenticated': False, 'status': 'not_configured'}
+        system_info['current_authentications']['discord'] = {'authenticated': False, 'status': 'not_configured'}
+        
+        return jsonify({
+            'success': True,
+            'system_info': system_info
+        })
+        
+    except Exception as e:
+        logger.error(f"System info error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get system info: {str(e)}'
+        }), 500
+
+def check_spotify_auth_status():
+    """Check Spotify authentication status"""
+    try:
+        import spotipy
+        from spotipy.oauth2 import SpotifyOAuth
+        
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        redirect_uri = 'http://127.0.0.1:5001/api/spotify/callback'
+        scope = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
+        
+        if not all([client_id, client_secret]):
+            return {
+                'authenticated': False,
+                'error': 'Spotify credentials not configured'
+            }
+        
+        auth_manager = SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            scope=scope,
+            cache_path=".spotify_cache"
+        )
+        
+        token_info = auth_manager.cache_handler.get_cached_token()
+        
+        if not token_info:
+            return {
+                'authenticated': False,
+                'status': 'no_cached_credentials'
+            }
+        
+        # Test the connection
+        try:
+            spotify = spotipy.Spotify(auth_manager=auth_manager)
+            user_info = spotify.current_user()
+            
+            return {
+                'authenticated': True,
+                'user': {
+                    'display_name': user_info['display_name'],
+                    'email': user_info.get('email', 'N/A'),
+                    'followers': user_info['followers']['total']
+                },
+                'status': 'active'
+            }
+            
+        except Exception as e:
+            return {
+                'authenticated': False,
+                'error': 'Token expired or invalid',
+                'status': 'token_expired'
+            }
+        
+    except ImportError:
+        return {
+            'authenticated': False,
+            'error': 'Spotify library not installed'
+        }
+    except Exception as e:
+        return {
+            'authenticated': False,
+            'error': f'Status check failed: {str(e)}'
+        }
 
 @app.route('/api/spotify/callback')
 def spotify_callback():
