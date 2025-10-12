@@ -1,40 +1,132 @@
-# My First uAgent
+# Gmail Agent
 
-This is a simple uAgent implementation using the Fetch.ai uAgents framework.
+An AI agent that enables you to send emails through Gmail using a simple, structured command format.
 
-## Agent Details
+## What It Does
 
-- **Name**: alice
-- **Type**: Local Agent
-- **Purpose**: Basic demonstration of uAgent functionality
+The Gmail Agent allows you to send emails by typing structured commands. It handles authentication with your Gmail account and sends emails on your behalf.
 
-## Features
+## Key Features
 
-- Startup event handling
-- Agent registration and communication
-- Message model support
-- Mailbox integration for Agentverse connectivity
+### 📧 Email Sending
+- Send emails through your Gmail account
+- Simple structured command format
+- Optional subject lines (emails can be sent without subjects)
+- Automatic validation and error checking
 
-## Files
+### 🔐 Secure Authentication
+- Connects to your Gmail account securely
+- One-time setup process
+- Your credentials are stored safely
 
-- `my_first_agent.py` - Basic agent with startup handler
-- `local_agent.py` - Local agent with message model
-- `mailbox_agent.py` - Mailbox agent for Agentverse integration
+### 💬 Easy to Use
+- Works through chat interface
+- Clear error messages when something goes wrong
+- Real-time feedback on email status
 
-## Usage
+## How to Use
 
-1. Activate the virtual environment:
-   ```bash
-   source venv/bin/activate
-   ```
+### Getting Started
 
-2. Run any of the agent scripts:
-   ```bash
-   python my_first_agent.py
-   python local_agent.py
-   python mailbox_agent.py
-   ```
+1. **First Time Setup**
+   - The agent will guide you through connecting to your Gmail account
+   - You'll need to authenticate once through your browser
+   - After setup, you can send emails immediately
 
-## Agent Address
+### Command Format
 
-Each agent will display its unique address when started. This address can be used for inter-agent communication.
+To send an email, use this exact format:
+
+```
+send
+to: recipient@example.com
+subject: Email subject (optional)
+content: Your message content here
+```
+
+### Examples
+
+**Basic email without subject:**
+```
+send
+to: john@example.com
+content: Hi John, hope you're doing well!
+```
+
+**Email with subject:**
+```
+send
+to: team@company.com
+subject: Project Update
+content: The project is on track and we'll be delivering on time.
+```
+
+**Multi-line content:**
+```
+send
+to: client@business.com
+subject: Proposal Review
+content: Please review the attached proposal and let me know your thoughts. We can schedule a call to discuss any questions you might have.
+```
+
+### Important Notes
+
+- **Required fields:** `to:` and `content:`
+- **Optional field:** `subject:` (if omitted, email will be sent without a subject)
+- **Format:** Each field must be on its own line
+- **Command:** Must start with "send"
+
+### What Happens When You Send
+
+1. The agent validates your command format
+2. Checks that the email address is valid
+3. Sends the email through your Gmail account
+4. Provides confirmation with message ID
+5. Shows any errors if something goes wrong
+
+### Common Errors
+
+**Wrong format:**
+```
+❌ Command must start with 'send'. Expected format:
+
+send
+to: email@example.com
+subject: Email subject (optional)
+content: Email content
+```
+
+**Missing required fields:**
+```
+❌ Missing required field: 'to:' with valid email address
+```
+
+**Invalid email:**
+```
+❌ Invalid email format: not-an-email
+```
+
+### Rate Limits
+
+- You can send up to 10 emails per hour
+- If you exceed this limit, you'll get a clear message
+- The limit resets every hour
+
+## Troubleshooting
+
+**Can't send emails?**
+- Make sure you've completed the initial Gmail authentication
+- Check that your command follows the exact format shown above
+- Verify the recipient email address is correct
+
+**Authentication issues?**
+- The agent will provide a link to re-authenticate if needed
+- Make sure you're using the same Gmail account you set up initially
+
+**Still having problems?**
+- Check the error message for specific guidance
+- Make sure you're using the exact format: `send` on the first line, then `to:`, `subject:`, and `content:` on separate lines
+
+---
+
+*This agent is designed for secure, reliable email sending through Gmail with a focus on structured commands and clear error handling.*

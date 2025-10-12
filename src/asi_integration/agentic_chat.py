@@ -19,8 +19,10 @@ from typing import List, Dict
 # Handle both relative and absolute imports
 try:
     from asi_client import ASIOneClient
+    from gmail_agent_helper import GmailAgentHelper
 except ImportError:
     from .asi_client import ASIOneClient
+    from .gmail_agent_helper import GmailAgentHelper
 
 
 class AgenticChat:
@@ -102,12 +104,27 @@ Your capabilities include:
 - Maintaining conversation context and session state
 - Processing both immediate requests and asynchronous agent tasks
 
+IMPORTANT: You have access to a Gmail Agent with the address: agent1qw6kgumlfqp9drr54qsfngdkz50vgues3u7sewg2fgketekqk8hz500ytg3
+
+When users request email-related tasks, you should:
+1. Use the Gmail Agent to send emails
+2. Format email requests properly using the structured format:
+   ```
+   send
+   to: email@example.com
+   subject: Email subject (optional)
+   content: Email content
+   ```
+3. Wait for confirmation that the email was sent successfully
+4. Provide clear feedback to the user about the email status
+
 You should:
 - Be helpful, friendly, and professional
 - Clearly explain what you're doing when working with agents
 - Provide detailed responses when appropriate
 - Ask clarifying questions when needed
 - Maintain a consistent personality throughout the conversation
+- Always confirm email sending status with users
 
 Keep your responses short, concise, and polite.
 
@@ -131,6 +148,53 @@ Always strive to be the most helpful assistant possible while leveraging the pow
         """Add a message to the conversation history."""
         self.conversation_history.append({"role": role, "content": content})
     
+    def is_email_request(self, user_message: str) -> bool:
+        """Check if the user message is requesting to send an email."""
+        return GmailAgentHelper.is_email_request(user_message)
+    
+    def enhance_email_request(self, user_message: str) -> str:
+        """
+        Enhance email requests with specific instructions for the Gmail agent.
+        
+        Args:
+            user_message: The user's original message
+            
+        Returns:
+            Enhanced message with Gmail agent instructions
+        """
+        if not self.is_email_request(user_message):
+            return user_message
+        
+        # Extract email info to validate the request
+        is_valid, email_info = GmailAgentHelper.extract_email_info(user_message)
+        
+        if is_valid and email_info:
+            # Create a structured email request
+            formatted_request = GmailAgentHelper.format_email_request(
+                email_info["to"],
+                email_info["subject"],
+                email_info["content"]
+            )
+            
+            enhanced_message = f"""I need to send an email using the Gmail Agent. Here's the structured request:
+
+{formatted_request}
+
+Please use the Gmail Agent at address {GmailAgentHelper.GMAIL_AGENT_ADDRESS} to send this email and confirm when it's sent."""
+            
+            return enhanced_message
+        else:
+            # If we can't parse the email info, provide guidance
+            return f"""I understand you want to send an email. To help you with this, I need:
+
+1. The recipient's email address
+2. The subject (optional)
+3. The message content
+
+Please provide these details, and I'll use the Gmail Agent to send your email.
+
+For example: "Send an email to john@example.com about the meeting. Tell him we need to reschedule for tomorrow." """
+    
     def get_response(self, user_message: str) -> str:
         """
         Get a response from the agentic model.
@@ -144,11 +208,18 @@ Always strive to be the most helpful assistant possible while leveraging the pow
         try:
             # Log user message
             self.logger.info(f"USER: {user_message}")
+            
+            # Check if this is an email request and enhance it
+            enhanced_message = self.enhance_email_request(user_message)
+            if enhanced_message != user_message:
+                self.logger.info(f"ENHANCED EMAIL REQUEST: {enhanced_message}")
+                print("📧 Detected email request - enhancing for Gmail agent...")
+            
             print("🤖 Assistant: ", end="", flush=True)
             
             # Stream the response with conversation history (before adding current user message)
             assistant_message = self.client.stream_chat(
-                user_message, 
+                enhanced_message, 
                 model=self.model, 
                 conversation_id=self.conversation_id,
                 conversation_history=self.conversation_history
@@ -161,11 +232,26 @@ Always strive to be the most helpful assistant possible while leveraging the pow
             self.add_message("user", user_message)
             self.add_message("assistant", assistant_message)
             
-            # Check for async agent responses
-            if "I've sent the message" in assistant_message or "working on" in assistant_message.lower():
+            # Check for async agent responses - improved detection
+            async_indicators = [
+                "I've sent the message",
+                "working on",
+                "sending email",
+                "gmail agent",
+                "email sent",
+                "message sent",
+                "agent1q",  # Agent addresses
+                "agentverse",
+                "deployed agent"
+            ]
+            
+            is_async_request = any(indicator.lower() in assistant_message.lower() for indicator in async_indicators)
+            
+            if is_async_request:
                 print("\n🔄 Agent is working on your request...")
                 self.logger.info("ASYNC: Agent is working on request...")
                 
+                # Use a more specific polling approach for Gmail agent
                 follow_up = self.client.poll_for_async_reply(
                     self.conversation_id, 
                     self.conversation_history.copy(),
@@ -178,6 +264,8 @@ Always strive to be the most helpful assistant possible while leveraging the pow
                     assistant_message += f"\n\n[Agent completed]: {follow_up}"
                 else:
                     self.logger.info("ASYNC: No follow-up response received")
+                    # Add a note about potential delay
+                    assistant_message += "\n\n[Note: Agent response may be delayed. Please wait a moment and try again if needed.]"
             
             return assistant_message
             
@@ -224,7 +312,15 @@ Agentic Capabilities:
   • Asynchronous agent task processing
   • Multi-agent workflow coordination
 
+📧 Gmail Agent Integration:
+  • Gmail Agent Address: {GmailAgentHelper.GMAIL_AGENT_ADDRESS}
+  • Send emails through natural language requests
+  • Automatic email request detection and formatting
+  • Real-time email sending status updates
+
 Example requests:
+  "Send an email to john@example.com about the meeting tomorrow"
+  "Email my boss about the project status"
   "Help me book a restaurant for dinner tonight"
   "Find me a flight from NYC to LA next week"
   "Create a meeting agenda for our team standup"

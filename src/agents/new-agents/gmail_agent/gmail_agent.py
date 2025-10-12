@@ -38,6 +38,7 @@ AGENT_NAME = os.getenv("AGENT_NAME", "Gmail Agent")
 AGENT_SEED = os.getenv("AGENT_SEED", "your_seed_phrase_here")
 PORT = int(os.getenv("PORT", "8000"))
 
+
 # OAuth Configuration - Add more scopes for better compatibility
 OAUTH_SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
@@ -292,10 +293,10 @@ async def handle_email_request(ctx: Context, sender: str, msg: EmailSendRequest)
         await ctx.send(sender, response)
         return
     
-    # Check if subject is missing and log warning
+    # Check if subject is missing and log info
     if not msg.subject or not msg.subject.strip():
-        ctx.logger.warning("No subject provided - using default subject")
-        msg.subject = "Message from Gmail Agent"
+        ctx.logger.info("No subject provided - sending email without subject")
+        msg.subject = ""
     
     # Send the email
     result = send_gmail_message(
@@ -367,64 +368,86 @@ async def handle_health_check(ctx: Context, sender: str, msg: HealthCheck):
 chat_protocol = Protocol(spec=chat_protocol_spec)
 
 
+
+
 def extract_email_info(text: str) -> dict:
     """
-    Extract email information from natural language text using regex patterns
+    Extract email information from structured text format
+    
+    Expected format:
+    send
+    to: email@example.com
+    subject: Email subject
+    content: Email content
     
     Args:
-        text: Natural language text containing email request
+        text: Structured text containing email request
         
     Returns:
-        dict: Extracted email information (to, subject, body)
+        dict: Extracted email information (to, subject, body) or error info
     """
     email_info = {
         "to": None,
         "subject": None,
-        "body": None
+        "body": None,
+        "error": None,
+        "is_valid_format": False
     }
     
-    # Extract email address
-    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    emails = re.findall(email_pattern, text)
-    if emails:
-        email_info["to"] = emails[0]
+    # Check if the text starts with "send"
+    text_lower = text.strip().lower()
+    if not text_lower.startswith('send'):
+        email_info["error"] = "Command must start with 'send'. Expected format:\n\nsend\nto: email@example.com\nsubject: Email subject (optional)\ncontent: Email content"
+        return email_info
     
-    # Look for common patterns
-    # Subject patterns
-    subject_patterns = [
-        r'subject[:\s]+([^\n\r]+)',
-        r'title[:\s]+([^\n\r]+)',
-        r'about[:\s]+([^\n\r]+)',
-    ]
+    # Remove "send" prefix and get the rest of the text
+    remaining_text = text.strip()[4:].strip()  # Remove "send" and any whitespace
     
-    for pattern in subject_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            email_info["subject"] = match.group(1).strip()
-            break
+    # Check if the text follows the expected structured format
+    lines = remaining_text.split('\n')
     
-    # Body patterns - look for content after common keywords
-    body_patterns = [
-        r'(?:message|content|body|text)[:\s]+([^\n\r]+)',
-        r'(?:say|tell|write)[:\s]+([^\n\r]+)',
-    ]
+    # Look for the required field markers
+    has_to = any(line.strip().lower().startswith('to:') for line in lines)
+    has_content = any(line.strip().lower().startswith('content:') for line in lines)
     
-    for pattern in body_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            email_info["body"] = match.group(1).strip()
-            break
+    # Check if it's in the expected format
+    if not (has_to and has_content):
+        email_info["error"] = "Invalid format. Expected format:\n\nsend\nto: email@example.com\nsubject: Email subject (optional)\ncontent: Email content"
+        return email_info
     
-    # If no specific body found, use the whole text as body (minus email and subject)
+    # Parse the structured format
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        if line.lower().startswith('to:'):
+            email_value = line[3:].strip()
+            # Validate email format
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            if re.match(email_pattern, email_value):
+                email_info["to"] = email_value
+            else:
+                email_info["error"] = f"Invalid email format: {email_value}"
+                return email_info
+                
+        elif line.lower().startswith('subject:'):
+            email_info["subject"] = line[8:].strip()
+            
+        elif line.lower().startswith('content:'):
+            email_info["body"] = line[8:].strip()
+    
+    # Validate required fields
+    if not email_info["to"]:
+        email_info["error"] = "Missing required field: 'to:' with valid email address"
+        return email_info
+        
     if not email_info["body"]:
-        # Remove email address and subject from text for body
-        body_text = text
-        if email_info["to"]:
-            body_text = body_text.replace(email_info["to"], "")
-        if email_info["subject"]:
-            body_text = body_text.replace(email_info["subject"], "")
-        email_info["body"] = body_text.strip()
+        email_info["error"] = "Missing required field: 'content:' with message content"
+        return email_info
     
+    # If we get here, the format is valid
+    email_info["is_valid_format"] = True
     return email_info
 
 
@@ -484,12 +507,27 @@ I can assist you with:
 - Email management tasks
 - Remembering our conversation context
 
-To send an email, just tell me:
-- Who to send it to (email address)
-- What the subject should be (optional)
-- What message to send
+To send an email, use this exact structured format:
 
-Example: "Send an email to john@example.com with subject 'Meeting' saying 'Let's meet tomorrow'"
+```
+send
+to: email@example.com
+subject: Email subject (optional)
+content: Email content
+```
+
+**Example:**
+```
+send
+to: john@example.com
+subject: Meeting tomorrow
+content: Hi John, let's meet tomorrow at 2 PM to discuss the project.
+```
+
+**Notes:**
+- `to:` field is required and must contain a valid email address
+- `subject:` field is optional (email will be sent without subject if omitted)
+- `content:` field is required and contains the message body
 
 I'll remember our conversation, so you can ask follow-up questions or send multiple emails in one session. How can I help you with email today?"""
         
@@ -502,36 +540,64 @@ I'll remember our conversation, so you can ask follow-up questions or send multi
         ))
         return
     
-    # Check if the message contains email-related intent
-    email_intent_keywords = ['send', 'email', 'mail', 'gmail', 'message', '@']
-    has_email_intent = any(keyword in text.lower() for keyword in email_intent_keywords)
+    # Extract email information from structured text format
+    email_info = extract_email_info(text)
     
-    # If no email intent detected, provide general help
-    if not has_email_intent:
+    # Check if the format is valid
+    if not email_info["is_valid_format"]:
         if not is_authenticated:
-            response_text = f"""I'm your Gmail Agent assistant, but I need authentication first.
+            response_text = f"""❌ Gmail authentication required!
 
-❌ {auth_message}
+{auth_message}
 
-🔐 To send emails, please authenticate:
+🔐 To send emails, you need to authenticate with your Google account.
 
 **Click here to authenticate:**
 🔗 {OAUTH_BASE_URL}
 
-This will open your browser for Google authentication. After authentication, you can send emails!
+This will:
+✅ Open your browser
+✅ Request permission to send emails  
+✅ Save credentials securely
+✅ Enable email sending
 
-What would you like to do with email?"""
+After authentication, you can send emails using the structured format:
+
+**Required format:**
+```
+send
+to: email@example.com
+subject: Email subject (optional)
+content: Email content
+```
+
+{email_info["error"]}"""
         else:
-            response_text = f"""I'm your Gmail Agent assistant, specialized in sending emails. ✅ {auth_message}
+            response_text = f"""❌ {email_info["error"]}
 
-It looks like you might want to send an email. To do that, please provide:
-- Recipient email address
-- Subject (optional but recommended)
-- Message content
+✅ {auth_message}
 
-Example: "Send an email to john@example.com saying 'Hello, how are you?'"
+**To send an email, use this exact format:**
 
-I'll remember our conversation, so feel free to ask questions or send multiple emails. What would you like to do with email?"""
+```
+send
+to: email@example.com
+subject: Email subject (optional)
+content: Email content
+```
+
+**Example:**
+```
+send
+to: john@example.com
+subject: Meeting tomorrow
+content: Hi John, let's meet tomorrow at 2 PM to discuss the project.
+```
+
+**Notes:**
+- `to:` field is required and must contain a valid email address
+- `subject:` field is optional (email will be sent without subject if omitted)
+- `content:` field is required and contains the message body"""
         
         await ctx.send(sender, ChatMessage(
             timestamp=datetime.utcnow(),
@@ -542,43 +608,24 @@ I'll remember our conversation, so feel free to ask questions or send multiple e
         ))
         return
     
-    # Extract email information from user text using regex patterns
-    email_info = extract_email_info(text)
+    # If we get here, the format is valid and we have the required information
+    # Check if subject is missing and provide info
+    subject_warning = ""
+    if not email_info["subject"]:
+        email_info["subject"] = ""
+        subject_warning = "\nℹ️ Note: No subject was provided, so the email will be sent without a subject."
     
-    # Validate required fields for email sending
-    missing_fields = []
-    if not email_info["to"]:
-        missing_fields.append("recipient email address")
-    if not email_info["body"]:
-        missing_fields.append("message content")
+    # Send the email
+    result = send_gmail_message(
+        to_email=email_info["to"],
+        subject=email_info["subject"],
+        body=email_info["body"]
+    )
     
-    # Check if we have the minimum required information to send an email
-    if email_info["to"] and email_info["body"]:
-        # Check if subject is missing and provide recommendation
-        subject_warning = ""
-        if not email_info["subject"]:
-            email_info["subject"] = "Message from Gmail Agent"
-            subject_warning = "\n⚠️ Note: No subject was provided, so I used a default subject. It's recommended to include a subject for better email organization."
-        
-        # Send the email
-        result = send_gmail_message(
-            to_email=email_info["to"],
-            subject=email_info["subject"],
-            body=email_info["body"]
-        )
-        
-        if result["success"]:
-            response_text = f"✅ Email sent successfully!\n\nTo: {email_info['to']}\nSubject: {email_info['subject']}\nMessage ID: {result['message_id']}{subject_warning}"
-        else:
-            response_text = f"❌ Failed to send email: {result['error']}"
+    if result["success"]:
+        response_text = f"✅ Email sent successfully!\n\nTo: {email_info['to']}\nSubject: {email_info['subject'] if email_info['subject'] else '(no subject)'}\nMessage ID: {result['message_id']}{subject_warning}"
     else:
-        # Provide specific error message about missing fields
-        if len(missing_fields) == 1:
-            response_text = f"❌ Cannot send email: Missing {missing_fields[0]}.\n\nPlease provide the missing information and try again."
-        else:
-            response_text = f"❌ Cannot send email: Missing {', '.join(missing_fields)}.\n\nPlease provide all required information and try again."
-        
-        response_text += "\n\nRequired fields:\n- Recipient email address\n- Message content\n\nOptional fields:\n- Subject (recommended for better organization)"
+        response_text = f"❌ Failed to send email: {result['error']}"
     
     # Send response back
     await ctx.send(sender, ChatMessage(
