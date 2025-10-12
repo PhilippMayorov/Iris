@@ -29,6 +29,63 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def clean_text_for_tts(text: str) -> str:
+    """
+    Clean text for TTS by removing markdown formatting and special characters
+    that cause pronunciation issues.
+    """
+    if not text:
+        return text
+    
+    # Remove markdown formatting
+    # Remove bold formatting (**text** or __text__)
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'__(.*?)__', r'\1', text)
+    
+    # Remove italic formatting (*text* or _text_)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'_(.*?)_', r'\1', text)
+    
+    # Remove code formatting (`text`)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    
+    # Remove strikethrough formatting (~~text~~)
+    text = re.sub(r'~~(.*?)~~', r'\1', text)
+    
+    # Remove headers (# ## ###)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    
+    # Remove links but keep the text ([text](url) -> text)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # Remove blockquotes (> text)
+    text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
+    
+    # Remove horizontal rules (--- or ***)
+    text = re.sub(r'^[-*_]{3,}$', '', text, flags=re.MULTILINE)
+    
+    # Remove list markers (- * + 1. 2. etc.)
+    text = re.sub(r'^[\s]*[-*+]\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[\s]*\d+\.\s*', '', text, flags=re.MULTILINE)
+    
+    # Clean up multiple spaces and newlines
+    text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single
+    text = re.sub(r'[ \t]+', ' ', text)    # Multiple spaces to single
+    text = re.sub(r'\n ', '\n', text)      # Remove leading spaces after newlines
+    
+    # Remove any remaining special characters that might cause issues
+    # Keep common punctuation but remove problematic ones
+    text = re.sub(r'[^\w\s.,!?;:\-"\']', '', text)
+    
+    # Clean up multiple spaces again after character removal
+    text = re.sub(r'[ \t]+', ' ', text)
+    
+    # Clean up the final result
+    text = text.strip()
+    
+    logger.info(f"TTS text cleaned: '{text[:50]}...'")
+    return text
+
 class ChatContextManager:
     """
     Manages conversation context and memory for the AI assistant
@@ -286,6 +343,49 @@ def is_music_related_request(text):
     
     return False
 
+# Email-related keyword detection
+def is_email_related_request(text):
+    """
+    Detect if the user's request is email-related
+    """
+    if not text:
+        return False
+    
+    # Convert to lowercase for case-insensitive matching
+    text_lower = text.lower()
+    
+    # Status/connection queries should be handled by Gemini, not Gmail agent
+    status_queries = [
+        'are you connected', 'is gmail connected', 'gmail status', 'gmail connection',
+        'connected to gmail', 'gmail working', 'gmail available', 'gmail ready',
+        'check gmail', 'gmail authentication', 'gmail auth', 'gmail setup'
+    ]
+    
+    # Check if this is a status query
+    for status_query in status_queries:
+        if status_query in text_lower:
+            return False  # Let Gemini handle status queries
+    
+    # Email-related keywords
+    email_keywords = [
+        'email', 'send email', 'compose email', 'write email', 'mail',
+        'send mail', 'compose mail', 'write mail', 'message', 'send message',
+        'email to', 'mail to', 'send to', 'compose to', 'write to',
+        'draft', 'compose', 'reply', 'forward', 'inbox', 'outbox',
+        'gmail', 'outlook', 'yahoo mail', 'email address', 'recipient',
+        'subject', 'body', 'attachment', 'cc', 'bcc', 'reply to',
+        'email someone', 'mail someone', 'send someone', 'contact',
+        'notify', 'notification', 'reminder email', 'follow up',
+        'thank you email', 'meeting email', 'invitation', 'invite'
+    ]
+    
+    # Check if any email keyword is present
+    for keyword in email_keywords:
+        if keyword in text_lower:
+            return True
+    
+    return False
+
 # Call Spotify agent endpoint
 def call_spotify_agent(user_request):
     """
@@ -323,6 +423,45 @@ def call_spotify_agent(user_request):
         return None
     except Exception as e:
         logger.error(f"Unexpected error calling Spotify agent: {str(e)}")
+        return None
+
+# Call Gmail agent endpoint
+def call_gmail_agent(user_request):
+    """
+    Call the Gmail agent endpoint with the user's email request
+    """
+    try:
+        logger.info(f"Calling Gmail agent with request: {user_request}")
+        
+        # Gmail agent endpoint
+        gmail_url = "http://localhost:8000/chat"
+        
+        # Prepare the request payload
+        payload = {
+            "text": user_request
+        }
+        
+        # Make the request to Gmail agent
+        response = requests.post(
+            gmail_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30  # 30 second timeout
+        )
+        
+        if response.status_code == 200:
+            gmail_response = response.json()
+            logger.info(f"Gmail agent response: {gmail_response}")
+            return gmail_response
+        else:
+            logger.error(f"Gmail agent returned status {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling Gmail agent: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error calling Gmail agent: {str(e)}")
         return None
 
 # Process music request through Spotify agent and Gemini
@@ -486,6 +625,162 @@ Respond as Iris:"""
         logger.error(f"Error processing music request: {str(e)}")
         return "I'm having trouble processing your music request. To use music features, please click the 'Integrate with apps' button in the top right corner and connect your Spotify account."
 
+# Process email request through Gmail agent and Gemini
+def process_email_request(voice_input):
+    """
+    Process email-related requests through Gmail agent and then through Gemini
+    """
+    try:
+        logger.info(f"Processing email request: {voice_input}")
+        
+        # Call Gmail agent
+        gmail_response = call_gmail_agent(voice_input)
+        
+        if not gmail_response:
+            # Enhanced error message for Gmail connection issues
+            return "I'm having trouble connecting to the email service. To use email features, please make sure the Gmail agent is running and properly configured."
+        
+        # Check if the Gmail response indicates authentication/connection issues
+        if isinstance(gmail_response, dict):
+            gmail_text = str(gmail_response).lower()
+        else:
+            gmail_text = str(gmail_response).lower()
+        
+        # Check for common Gmail error patterns
+        gmail_error_patterns = [
+            'not authenticated', 'authentication failed', 'authorization required',
+            'login required', 'permission denied', 'access denied', 'token expired',
+            'invalid token', 'unable to access', 'cannot connect', 'integration failed',
+            'oauth', 'credentials', 'api key', 'connection refused', 'service down', 'unreachable'
+        ]
+        
+        has_gmail_error = any(pattern in gmail_text for pattern in gmail_error_patterns)
+        
+        if has_gmail_error:
+            logger.warning(f"Gmail error detected in response: {gmail_response}")
+            return "I'm having trouble accessing your email service. Please make sure the Gmail agent is running and properly authenticated."
+        
+        # Process Gmail response through Gemini for user-friendly output
+        if genai and os.getenv('GEMINI_API_KEY'):
+            try:
+                # Get system information for context
+                system_info = get_system_info()
+                
+                # Build system context for email processing
+                system_context = ""
+                if system_info:
+                    gmail_auth = system_info['current_authentications'].get('gmail', {})
+                    gmail_integration = system_info['available_integrations'].get('gmail', {})
+                    
+                    system_context = f"""
+
+## SYSTEM INFORMATION
+You are Iris, an AI assistant with access to Gmail integration:
+
+### Gmail Integration Status:
+- **Status**: {'✅ Connected' if gmail_auth.get('authenticated', False) else '❌ Not connected'}
+- **Capabilities**: {', '.join(gmail_integration.get('capabilities', []))}
+"""
+                    if gmail_auth.get('authenticated') and 'user' in gmail_auth:
+                        system_context += f"- **Connected as**: {gmail_auth['user'].get('email', 'Unknown')}\n"
+                
+                # Get conversation context for email processing
+                conversation_context = context_manager.get_context_for_prompt(voice_input, include_recent=3)
+                
+                # Create a prompt to make the Gmail response more user-friendly
+                email_processing_prompt = f"""You are Iris, a helpful AI assistant. The user made an email request, and here's what the email service found:
+
+{system_context}
+
+## CONVERSATION CONTEXT
+{conversation_context}
+
+User's request: {voice_input}
+Email service response: {gmail_response}
+
+Please provide a friendly, conversational response to the user about what was found. Make it sound natural and helpful, as if you're personally helping them with their email request. Keep it concise but informative.
+
+**CONTEXT AWARENESS**: Use the conversation context above to provide more personalized email assistance. Reference previous email requests, recipients mentioned, or email topics the user has discussed.
+
+IMPORTANT: If the email service response indicates any authentication, connection, or access issues, you MUST tell the user to check their Gmail agent configuration.
+
+FORMATTING GUIDELINES:
+- Use markdown formatting when appropriate to make your responses more readable
+- Use emojis sparingly but effectively (📧 for email-related content)
+- Keep responses conversational and helpful
+- If an email was sent successfully, confirm the details (recipient, subject)
+- If there were issues, explain what went wrong and how to fix it
+
+RESPONSE STYLE:
+- Be warm and helpful
+- Use "I" when referring to actions you took
+- Be specific about what happened
+- Offer next steps if appropriate
+- Keep it concise but informative
+
+Please provide a natural, helpful response to the user."""
+
+                # Configure generation settings for email processing
+                generation_config = genai.types.GenerationConfig(
+                    temperature=0.7,
+                    top_p=0.8,
+                    top_k=40,
+                    max_output_tokens=500,
+                )
+                
+                # Safety settings
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                ]
+                
+                model = genai.GenerativeModel('gemini-2.5-flash')
+
+                logger.info("Processing Gmail response through Gemini...")
+
+                response = model.generate_content(
+                    email_processing_prompt,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                    request_options={'timeout': 15}
+                )
+
+                if response and hasattr(response, 'text') and response.text:
+                    processed_response = response.text.strip()
+                    logger.info(f"Gemini processed email response: {processed_response}")
+                    
+                    # Add email interaction to context
+                    context_manager.add_interaction(voice_input, processed_response, "email")
+                    
+                    # Extract and update user preferences from email interaction
+                    extracted_preferences = context_manager.extract_preferences_from_interaction(voice_input, processed_response)
+                    if extracted_preferences:
+                        context_manager.update_user_preferences(extracted_preferences)
+                    
+                    return processed_response
+                else:
+                    logger.warning("Gemini returned empty response for email request")
+                    fallback_response = f"I've processed your email request: {gmail_response}"
+                    
+                    # Add fallback interaction to context
+                    context_manager.add_interaction(voice_input, fallback_response, "email")
+                    
+                    return fallback_response
+                    
+            except Exception as gemini_error:
+                logger.warning(f"Gemini processing failed for email request: {gemini_error}")
+                return f"I've processed your email request: {gmail_response}"
+        else:
+            # Fallback if Gemini is not available
+            logger.warning("Gemini not available, returning raw Gmail response")
+            return f"I've processed your email request: {gmail_response}"
+            
+    except Exception as e:
+        logger.error(f"Error processing email request: {str(e)}")
+        return "I'm having trouble processing your email request. Please make sure the Gmail agent is running and properly configured."
+
 # Get system information for Gemini
 def get_system_info():
     """
@@ -517,7 +812,12 @@ def get_gemini_direct_response(voice_input):
         logger.info("Music-related request detected, routing to Spotify agent")
         return process_music_request(voice_input)
     
-    # If not music-related, use Gemini for general responses
+    # Check if this is an email-related request
+    if is_email_related_request(voice_input):
+        logger.info("Email-related request detected, routing to Gmail agent")
+        return process_email_request(voice_input)
+    
+    # If not music or email-related, use Gemini for general responses
     if not genai:
         logger.warning("Gemini not available for non-music requests")
         return "I heard you, but I need my AI service to be configured to help with that."
@@ -922,7 +1222,7 @@ def refine_speech():
 
 @app.route('/api/process-command', methods=['POST'])
 def process_command():
-    """Process refined command with ASI:One (placeholder for now)"""
+    """Process refined command and route to appropriate agent"""
     try:
         data = request.get_json()
         refined_command = data.get('refined_command', '')
@@ -930,35 +1230,131 @@ def process_command():
         if not refined_command:
             return jsonify({'success': False, 'error': 'No refined command provided'}), 400
         
-        logger.info(f"Processing command with ASI:One: {refined_command}")
+        logger.info(f"Processing command: {refined_command}")
         
-        # TODO: Integrate with ASI:One reasoning module
-        # For now, create a mock response
+        # Check if this is an email-related request
+        if is_email_related_request(refined_command):
+            logger.info("Email request detected, routing to Gmail agent")
+            try:
+                # Process through Gmail agent
+                gmail_response = call_gmail_agent(refined_command)
+                
+                if gmail_response:
+                    return jsonify({
+                        'success': True,
+                        'refined_command': refined_command,
+                        'agent_response': gmail_response,
+                        'task_type': 'email',
+                        'next_steps': 'Email processed by Gmail agent'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Gmail agent is not responding. Please make sure it is running on port 8000.'
+                    }), 503
+                    
+            except Exception as gmail_error:
+                logger.error(f"Gmail agent error: {str(gmail_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Gmail agent error: {str(gmail_error)}'
+                }), 500
         
-        # Simulate ASI:One processing
-        mock_response = {
-            'task_type': 'calendar_event',  # This would be determined by ASI:One
-            'parameters': {
-                'attendee': 'Alice',
-                'time': '6pm',
-                'action': 'book_meeting'
-            },
-            'confidence': 0.95,
-            'suggested_action': f'I understand you want to: {refined_command}. Shall I proceed?'
-        }
+        # Check if this is a music-related request
+        elif is_music_related_request(refined_command):
+            logger.info("Music request detected, routing to Spotify agent")
+            try:
+                # Process through Spotify agent
+                spotify_response = call_spotify_agent(refined_command)
+                
+                if spotify_response:
+                    return jsonify({
+                        'success': True,
+                        'refined_command': refined_command,
+                        'agent_response': spotify_response,
+                        'task_type': 'music',
+                        'next_steps': 'Music request processed by Spotify agent'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Spotify agent is not responding. Please make sure it is running on port 8005.'
+                    }), 503
+                    
+            except Exception as spotify_error:
+                logger.error(f"Spotify agent error: {str(spotify_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Spotify agent error: {str(spotify_error)}'
+                }), 500
         
-        return jsonify({
-            'success': True,
-            'refined_command': refined_command,
-            'asi_one_response': mock_response,
-            'next_steps': 'Command ready for agent execution'
-        })
+        # For other requests, use Gemini for general processing
+        else:
+            logger.info("General request, processing with Gemini")
+            try:
+                # Process with Gemini
+                gemini_response = get_gemini_direct_response(refined_command)
+                
+                return jsonify({
+                    'success': True,
+                    'refined_command': refined_command,
+                    'gemini_response': gemini_response,
+                    'task_type': 'general',
+                    'next_steps': 'Request processed by Gemini AI'
+                })
+                
+            except Exception as gemini_error:
+                logger.error(f"Gemini processing error: {str(gemini_error)}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Gemini processing error: {str(gemini_error)}'
+                }), 500
         
     except Exception as e:
         logger.error(f"Command processing error: {str(e)}")
         return jsonify({
             'success': False,
             'error': f'Command processing failed: {str(e)}'
+        }), 500
+
+@app.route('/api/gmail/auth')
+def gmail_auth():
+    """Get Gmail authentication URL"""
+    try:
+        # Gmail OAuth server runs on port 8080
+        gmail_auth_url = "http://localhost:8080"
+        
+        # Check if Gmail agent is running by checking its health endpoint
+        try:
+            import requests
+            health_response = requests.get("http://localhost:8000/health", timeout=5)
+            if health_response.status_code == 200:
+                return jsonify({
+                    'success': True,
+                    'auth_url': gmail_auth_url,
+                    'message': 'Gmail authentication URL ready'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Gmail agent is not responding. Please make sure it is running on port 8000.'
+                }), 503
+        except requests.exceptions.ConnectionError:
+            return jsonify({
+                'success': False,
+                'error': 'Gmail agent is not running. Please start the Gmail agent first.'
+            }), 503
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Error checking Gmail agent status: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Gmail auth error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Gmail authentication setup failed: {str(e)}'
         }), 500
 
 @app.route('/api/gemini-direct-response', methods=['POST'])
@@ -1167,11 +1563,14 @@ def text_to_speech():
                 'error': 'ElevenLabs API not configured. Please set ELEVENLABS_API_KEY environment variable.'
             }), 500
         
-        logger.info(f"Converting text to speech: '{text[:50]}...' with voice {voice_id}")
+        # Clean the text for TTS to remove markdown and special characters
+        cleaned_text = clean_text_for_tts(text)
+        
+        logger.info(f"Converting text to speech: '{cleaned_text[:50]}...' with voice {voice_id}")
         
         # Prepare the request payload
         payload = {
-            "text": text,
+            "text": cleaned_text,
             "model_id": model_id
         }
         
@@ -1240,7 +1639,7 @@ def system_info():
                         'Search emails',
                         'Organize messages'
                     ],
-                    'endpoint': 'http://localhost:8002/chat',
+                    'endpoint': 'http://localhost:8000/chat',
                     'status': 'available'
                 },
                 'google_calendar': {
@@ -1310,8 +1709,18 @@ def system_info():
                 'error': str(e)
             }
         
+        # Check Gmail authentication status
+        try:
+            gmail_status = check_gmail_auth_status()
+            system_info['current_authentications']['gmail'] = gmail_status
+        except Exception as e:
+            logger.warning(f"Could not check Gmail auth status: {e}")
+            system_info['current_authentications']['gmail'] = {
+                'authenticated': False,
+                'error': str(e)
+            }
+        
         # For other integrations, we'll add status checks as they're implemented
-        system_info['current_authentications']['gmail'] = {'authenticated': False, 'status': 'not_configured'}
         system_info['current_authentications']['google_calendar'] = {'authenticated': False, 'status': 'not_configured'}
         system_info['current_authentications']['notes'] = {'authenticated': False, 'status': 'not_configured'}
         system_info['current_authentications']['discord'] = {'authenticated': False, 'status': 'not_configured'}
@@ -1387,6 +1796,56 @@ def check_spotify_auth_status():
         return {
             'authenticated': False,
             'error': 'Spotify library not installed'
+        }
+    except Exception as e:
+        return {
+            'authenticated': False,
+            'error': f'Status check failed: {str(e)}'
+        }
+
+def check_gmail_auth_status():
+    """Check Gmail agent authentication status"""
+    try:
+        # Check if Gmail agent is running and accessible
+        gmail_url = "http://localhost:8000/health"
+        
+        response = requests.get(gmail_url, timeout=5)
+        
+        if response.status_code == 200:
+            health_data = response.json()
+            gmail_api_status = health_data.get('gmail_api', 'disconnected')
+            
+            if gmail_api_status == 'connected':
+                return {
+                    'authenticated': True,
+                    'status': 'active',
+                    'agent_address': health_data.get('agent_address'),
+                    'gmail_api': gmail_api_status
+                }
+            else:
+                return {
+                    'authenticated': False,
+                    'status': 'gmail_api_disconnected',
+                    'error': 'Gmail API not connected'
+                }
+        else:
+            return {
+                'authenticated': False,
+                'status': 'agent_unreachable',
+                'error': f'Gmail agent returned status {response.status_code}'
+            }
+            
+    except requests.exceptions.ConnectionError:
+        return {
+            'authenticated': False,
+            'status': 'agent_not_running',
+            'error': 'Gmail agent is not running'
+        }
+    except requests.exceptions.Timeout:
+        return {
+            'authenticated': False,
+            'status': 'agent_timeout',
+            'error': 'Gmail agent timeout'
         }
     except Exception as e:
         return {

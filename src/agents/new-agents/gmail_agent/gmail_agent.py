@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from email.message import EmailMessage
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict
 from uuid import uuid4
 
 import google.auth
@@ -71,6 +71,7 @@ agent = Agent(
     port=PORT,
     mailbox=True,
     publish_agent_details=True,
+    readme_path="README.md"
 )
 
 # Initialize ASI:One client
@@ -956,6 +957,136 @@ async def startup(ctx: Context):
     else:
         ctx.logger.warning("❌ ASI:One AI integration disabled - natural language processing unavailable")
         ctx.logger.warning("⚠️ Set ASI_ONE_API_KEY environment variable to enable email functionality")
+
+
+# HTTP endpoint models (defined before __main__)
+class ChatRequest(Model):
+    text: str
+
+class ChatResponse(Model):
+    success: bool
+    message: str
+    request_id: str
+
+class CapabilitiesResponse(Model):
+    agent_name: str
+    capabilities: List[str]
+    supported_actions: List[str]
+    example_commands: List[str]
+    endpoints: Dict[str, str]
+
+class HealthResponse(Model):
+    status: str
+    agent_address: str
+    gmail_api: str
+    timestamp: int
+
+# Helper function for async AI processing
+async def process_email_request_with_asi_one_async(ctx: Context, text: str) -> str:
+    """Async wrapper for AI email processing"""
+    try:
+        # Use the existing AI processing function
+        result = process_email_request_with_asi_one(text)
+        
+        if result and result.get("is_valid_format"):
+            # Extract email details
+            to_email = result.get("to")
+            subject = result.get("subject") 
+            body = result.get("body")
+            
+            if to_email and subject and body:
+                # Try to send the email
+                try:
+                    email_result = send_gmail_message(to_email, subject, body)
+                    if email_result.get("success"):
+                        return f"✅ Email sent successfully to {to_email} with subject: '{subject}'"
+                    else:
+                        return f"❌ Failed to send email: {email_result.get('error', 'Unknown error')}"
+                except Exception as email_error:
+                    return f"❌ Error sending email: {str(email_error)}"
+            else:
+                return f"📧 Email details extracted: To: {to_email}, Subject: '{subject}', Body: '{body[:100]}...'"
+        else:
+            error_msg = result.get("error") if result else "No response from AI processing"
+            return error_msg or "Failed to process email request"
+            
+    except Exception as e:
+        ctx.logger.error(f"Error in AI processing: {e}")
+        return f"Error processing request: {str(e)}"
+
+# HTTP endpoint handlers
+@agent.on_rest_post("/chat", ChatRequest, ChatResponse)
+async def handle_chat_http(ctx: Context, req: ChatRequest) -> ChatResponse:
+    """Handle HTTP chat requests for natural language email sending"""
+    try:
+        if not req.text:
+            return ChatResponse(
+                success=False,
+                message="No text provided in request",
+                request_id=str(uuid4())
+            )
+        
+        # Process the request using AI
+        response_text = await process_email_request_with_asi_one_async(ctx, req.text)
+        
+        return ChatResponse(
+            success=True,
+            message=response_text,
+            request_id=str(uuid4())
+        )
+        
+    except Exception as e:
+        ctx.logger.error(f"Error handling HTTP chat request: {e}")
+        return ChatResponse(
+            success=False,
+            message=f"Error processing request: {str(e)}",
+            request_id=str(uuid4())
+        )
+
+@agent.on_rest_get("/capabilities", CapabilitiesResponse)
+async def handle_capabilities_http(ctx: Context) -> CapabilitiesResponse:
+    """Handle HTTP capabilities request"""
+    return CapabilitiesResponse(
+        agent_name="Gmail Agent",
+        capabilities=[
+            "Send emails via Gmail API",
+            "Natural language email composition",
+            "OAuth2 authentication",
+            "Email validation and formatting",
+            "AI-powered email content generation",
+            "Multi-recipient email support"
+        ],
+        supported_actions=[
+            "send email",
+            "compose message",
+            "email validation",
+            "recipient management"
+        ],
+        example_commands=[
+            "Send an email to john@example.com about the meeting",
+            "Compose a thank you email to the team",
+            "Send a reminder about the project deadline",
+            "Email the client with the proposal"
+        ],
+        endpoints={
+            "chat": "POST /chat - Send natural language email requests",
+            "capabilities": "GET /capabilities - Get this information",
+            "health": "GET /health - Check agent status"
+        }
+    )
+
+@agent.on_rest_get("/health", HealthResponse)
+async def handle_health_http(ctx: Context) -> HealthResponse:
+    """Handle HTTP health check request"""
+    # Check if Gmail credentials are available
+    gmail_status = "connected" if os.path.exists("token.json") else "disconnected"
+    
+    return HealthResponse(
+        status="healthy",
+        agent_address=str(agent.address),
+        gmail_api=gmail_status,
+        timestamp=int(datetime.now().timestamp())
+    )
 
 
 if __name__ == "__main__":

@@ -1680,9 +1680,33 @@
             }
           }
           
-          // TODO: Add other app authentication checks here
-          // For now, other apps are not authenticated
-          const otherItems = document.querySelectorAll('.integration-item:not([onclick*="Spotify"])')
+          // Check Gmail authentication
+          try {
+            const systemResponse = await fetch('/api/system-info')
+            const systemData = await systemResponse.json()
+            
+            const gmailItem = document.querySelector('.integration-item[onclick*="Gmail"]')
+            if (gmailItem && systemData.success && systemData.system_info) {
+              const gmailStatus = systemData.system_info.current_authentications?.gmail
+              
+              if (gmailStatus?.authenticated) {
+                gmailItem.classList.add('authenticated')
+                console.log(`✅ Gmail authenticated and connected`)
+              } else {
+                gmailItem.classList.remove('authenticated')
+                console.log(`❌ Gmail not authenticated: ${gmailStatus?.error || 'Not connected'}`)
+              }
+            }
+          } catch (gmailError) {
+            console.error('Error checking Gmail status:', gmailError)
+            const gmailItem = document.querySelector('.integration-item[onclick*="Gmail"]')
+            if (gmailItem) {
+              gmailItem.classList.remove('authenticated')
+            }
+          }
+          
+          // For other apps, remove authenticated status
+          const otherItems = document.querySelectorAll('.integration-item:not([onclick*="Spotify"]):not([onclick*="Gmail"])')
           otherItems.forEach(item => {
             item.classList.remove('authenticated')
           })
@@ -1698,6 +1722,8 @@
         
         if (appName === 'Spotify') {
           await handleSpotifyIntegration()
+        } else if (appName === 'Gmail') {
+          await handleGmailIntegration()
         } else {
           alert(`Integration with ${appName} is coming soon!`)
         }
@@ -1742,6 +1768,102 @@
             spotifyItem.style.pointerEvents = ''
             spotifyItem.querySelector('.integration-name').textContent = 'Spotify'
           }
+        }
+      }
+
+      // Handle Gmail integration
+      async function handleGmailIntegration() {
+        try {
+          console.log('Starting Gmail integration...')
+          
+          // Show loading state
+          const gmailItem = document.querySelector('.integration-item[onclick*="Gmail"]')
+          if (gmailItem) {
+            gmailItem.style.opacity = '0.6'
+            gmailItem.style.pointerEvents = 'none'
+            const originalText = gmailItem.querySelector('.integration-name').textContent
+            gmailItem.querySelector('.integration-name').textContent = 'Connecting...'
+          }
+          
+          // Check Gmail agent status
+          const response = await fetch('/api/system-info')
+          const data = await response.json()
+          
+          if (data.success && data.system_info) {
+            const gmailStatus = data.system_info.current_authentications?.gmail
+            
+            if (gmailStatus?.authenticated) {
+              console.log('Gmail is already authenticated and connected!')
+              alert('✅ Gmail is already connected and ready to use!\n\nYou can now send emails by saying things like:\n• "Send an email to john@example.com about the meeting"\n• "Compose a thank you email to the team"\n• "Email the client with the project update"')
+            } else {
+              // Gmail agent is not authenticated, get authentication URL
+              console.log('Gmail agent needs authentication')
+              
+              try {
+                // Get Gmail authentication URL from backend
+                const authResponse = await fetch('/api/gmail/auth')
+                const authData = await authResponse.json()
+                
+                if (authData.success && authData.auth_url) {
+                  // Show dialog with authentication link
+                  const userConfirmed = confirm(
+                    '📧 Gmail Authentication Required\n\n' +
+                    'To use Gmail features, you need to authenticate with Google.\n\n' +
+                    'Click OK to open the authentication page in a new tab.\n\n' +
+                    'After authentication, you can send emails through voice commands!'
+                  )
+                  
+                  if (userConfirmed) {
+                    // Open authentication page in new tab
+                    window.open(authData.auth_url, '_blank')
+                    
+                    // Show additional instructions
+                    setTimeout(() => {
+                      alert(
+                        '🔗 Authentication page opened!\n\n' +
+                        'Steps to complete authentication:\n' +
+                        '1. Complete the Google OAuth flow in the new tab\n' +
+                        '2. Return here and click the Gmail button again\n' +
+                        '3. The button should turn green when authenticated\n\n' +
+                        'Then you can send emails by saying:\n' +
+                        '"Send an email to test@example.com about the meeting"'
+                      )
+                    }, 1000)
+                  }
+                } else {
+                  throw new Error(authData.error || 'Failed to get Gmail authentication URL')
+                }
+              } catch (authError) {
+                console.error('Gmail auth URL error:', authError)
+                alert(
+                  '❌ Gmail Authentication Setup Failed\n\n' +
+                  `Error: ${authError.message}\n\n` +
+                  'Please make sure:\n' +
+                  '1. The Gmail agent is running on port 8000\n' +
+                  '2. The Gmail OAuth server is running on port 8080\n' +
+                  '3. Try restarting the Gmail agent'
+                )
+              }
+            }
+          } else {
+            throw new Error('Failed to get system information')
+          }
+          
+        } catch (error) {
+          console.error('Gmail integration error:', error)
+          alert(`Gmail integration check failed: ${error.message}\n\nMake sure the Gmail agent is running on port 8000.`)
+          
+        } finally {
+          // Reset UI state
+          const gmailItem = document.querySelector('.integration-item[onclick*="Gmail"]')
+          if (gmailItem) {
+            gmailItem.style.opacity = ''
+            gmailItem.style.pointerEvents = ''
+            gmailItem.querySelector('.integration-name').textContent = 'Gmail'
+          }
+          
+          // Refresh authentication status to update button styling
+          checkAuthenticationStatus()
         }
       }
 
