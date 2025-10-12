@@ -1,8 +1,8 @@
 # Vocal Agent - Python Dependencies
 
 # Core uAgents framework
-uagents>=0.12.0
-fetch-ai-ledger>=1.0.0
+uagents>=0.21.0
+# Note: fetch-ai-ledger not available for Python 3.13, using uagents built-in ledger support
 
 # API clients and integrations
 google-api-python-client>=2.100.0
@@ -60,3 +60,11 @@ python-dotenv>=1.0.0
 # Data validation and serialization
 marshmallow>=3.20.0
 jsonschema>=4.19.0
+
+
+#new-agents
+uagents>=0.18.1
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.0.0
