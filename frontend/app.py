@@ -15,7 +15,7 @@ import base64
 import io
 import re
 from dotenv import load_dotenv
-from google import genai
+# Import will be handled later in the initialization section
 
 # Load environment variables
 load_dotenv()
