@@ -134,6 +134,37 @@
         transform: scale(1.02);
       }
 
+      /* Special hover state when responding - indicates user can click for new request */
+      .main-content.responding .siri-circle:hover {
+        transform: scale(1.08);
+        box-shadow: 0 20px 60px rgba(0, 122, 255, 0.6);
+        filter: brightness(1.1);
+        cursor: pointer;
+        animation: gradientShift 0.8s ease-in-out infinite,
+          pulseActive 1s ease-in-out infinite;
+      }
+
+      .main-content.responding .siri-circle:hover .siri-inner {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      /* Add a subtle hint animation when in responding state */
+      .main-content.responding .siri-circle {
+        animation: gradientShift 3s ease-in-out infinite,
+          subtlePulse 3s ease-in-out infinite;
+      }
+
+      @keyframes subtlePulse {
+        0%,
+        70%,
+        100% {
+          transform: scale(1);
+        }
+        85% {
+          transform: scale(1.02);
+        }
+      }
+
       .siri-circle.listening {
         animation: gradientShift 0.5s ease-in-out infinite,
           pulseActive 0.8s ease-in-out infinite,
@@ -836,8 +867,14 @@
 
       // Toggle listening state for Siri circle
       function toggleListening() {
-        if (currentState === 'processing' || currentState === 'responding') {
-          return // Don't allow interruption during processing/responding
+        if (currentState === 'processing') {
+          return // Don't allow interruption during processing
+        }
+
+        // If in responding state, start a new request
+        if (currentState === 'responding') {
+          startNewRequest()
+          return
         }
 
         if (!isListening) {
@@ -859,6 +896,27 @@
           setState('processing')
           console.log('Stopped listening, starting processing...')
         }
+      }
+
+      // Start a new request from responding state
+      function startNewRequest() {
+        clearTyping()
+        const responseActions = document.getElementById('responseActions')
+        responseActions.style.display = 'none'
+
+        console.log('Starting new request from responding state...')
+
+        // Immediately start listening without going to idle first
+        if (!recognition && !initializeSpeechRecognition()) {
+          alert('Speech recognition not supported or failed to initialize')
+          return
+        }
+
+        finalTranscript = ''
+        recognition.start()
+        isListening = true
+        setState('listening')
+        console.log('New request started directly from responding state')
       }
 
       // Process transcribed text through the voice pipeline
@@ -1064,17 +1122,50 @@
           e.preventDefault()
 
           if (currentState === 'responding') {
-            startNewCommand()
+            startNewRequest()
           } else if (currentState === 'idle' || currentState === 'listening') {
             toggleListening()
           }
         }
       })
 
+      // Add hover feedback for responding state
+      function setupButtonHoverFeedback() {
+        const siriCircle = document.getElementById('siriCircle')
+
+        // siriCircle.addEventListener('mouseenter', function () {
+        //   if (currentState === 'responding') {
+        //     // Show temporary instruction when hovering in responding state
+        //     const instructionText = document.getElementById('instructionText')
+        //     if (instructionText.classList.contains('hidden')) {
+        //       instructionText.textContent = 'Click to start a new request'
+        //       instructionText.classList.remove('hidden')
+        //       instructionText.style.opacity = '0.8'
+        //       instructionText.style.fontSize = '0.9em'
+        //     }
+        //   }
+        // })
+
+        siriCircle.addEventListener('mouseleave', function () {
+          if (currentState === 'responding') {
+            // Hide instruction when not hovering
+            const instructionText = document.getElementById('instructionText')
+            if (!instructionText.classList.contains('hidden')) {
+              instructionText.classList.add('hidden')
+              instructionText.style.opacity = ''
+              instructionText.style.fontSize = ''
+            }
+          }
+        })
+      }
+
       // Initialize the app when DOM is loaded
       document.addEventListener('DOMContentLoaded', function () {
         console.log('Iris Voice Assistant loaded')
         setState('idle')
+
+        // Set up button hover feedback
+        setupButtonHoverFeedback()
 
         // Initialize speech recognition
         if (!initializeSpeechRecognition()) {
