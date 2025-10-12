@@ -63,9 +63,16 @@ def test_storage_fix():
                 print(f"   Valid format: {result.get('is_valid_format', False)}")
                 print(f"   To: {result.get('to', 'None')}")
                 print(f"   Subject: {result.get('subject', 'None')}")
-                print(f"   Body: {result.get('body', 'None')[:50]}{'...' if result.get('body') and len(result.get('body', '')) > 50 else ''}")
+                body = result.get('body', 'None')
+                if body and body != 'None':
+                    print(f"   Body: {body[:50]}{'...' if len(body) > 50 else ''}")
+                else:
+                    print(f"   Body: {body}")
                 if result.get("reasoning"):
-                    print(f"   Reasoning: {result['reasoning'][:100]}{'...' if len(result.get('reasoning', '')) > 100 else ''}")
+                    reasoning = result['reasoning']
+                    print(f"   Reasoning: {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
+                if result.get("error"):
+                    print(f"   Error: {result['error']}")
                 success_count += 1
             else:
                 print("❌ Function returned None")

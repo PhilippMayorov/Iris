@@ -409,7 +409,14 @@ def process_email_request_with_asi_one(text: str, conversation_history: list = N
             "subject": None,
             "body": None,
             "error": "ASI:One client not available. Please set ASI_ONE_API_KEY environment variable.",
-            "is_valid_format": False
+            "is_valid_format": False,
+            "reasoning": "ASI:One AI is required for natural language email processing",
+            "needs_clarification": True,
+            "suggestions": [
+                "Get your ASI:One API key from https://asi1.ai/dashboard/api-keys",
+                "Set the environment variable: export ASI_ONE_API_KEY='your_api_key_here'",
+                "Restart the agent to enable natural language processing"
+            ]
         }
     
     try:
