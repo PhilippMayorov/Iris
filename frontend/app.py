@@ -866,6 +866,68 @@ def spotify_status():
             'error': f'Status check failed: {str(e)}'
         }), 500
 
+@app.route('/api/text-to-speech', methods=['POST'])
+def text_to_speech():
+    """Convert text to speech using ElevenLabs API"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        voice_id = data.get('voice_id', 'JBFqnCBsd6RMkjVDRZzb')  # Default voice
+        model_id = data.get('model_id', 'eleven_multilingual_v2')  # Default model
+        output_format = data.get('output_format', 'mp3_44100_128')  # Default format
+        
+        if not text:
+            return jsonify({'success': False, 'error': 'No text provided'}), 400
+        
+        if not elevenlabs_client:
+            return jsonify({
+                'success': False, 
+                'error': 'ElevenLabs API not configured. Please set ELEVENLABS_API_KEY environment variable.'
+            }), 500
+        
+        logger.info(f"Converting text to speech: '{text[:50]}...' with voice {voice_id}")
+        
+        # Prepare the request payload
+        payload = {
+            "text": text,
+            "model_id": model_id
+        }
+        
+        # Make the request to ElevenLabs API
+        response = elevenlabs_client.text_to_speech.convert(
+            voice_id=voice_id,
+            output_format=output_format,
+            **payload
+        )
+        
+        # Handle generator response from ElevenLabs API
+        if hasattr(response, '__iter__') and not isinstance(response, (bytes, str)):
+            # Convert generator to bytes
+            audio_bytes = b''.join(response)
+        else:
+            # Direct bytes response
+            audio_bytes = response
+        
+        # Convert the audio response to base64 for frontend
+        audio_data = base64.b64encode(audio_bytes).decode('utf-8')
+        
+        logger.info("Text-to-speech conversion successful")
+        
+        return jsonify({
+            'success': True,
+            'audio_data': audio_data,
+            'format': output_format,
+            'voice_id': voice_id,
+            'model_id': model_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Text-to-speech error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Text-to-speech conversion failed: {str(e)}'
+        }), 500
+
 @app.route('/api/spotify/callback')
 def spotify_callback():
     """Handle Spotify OAuth callback"""
