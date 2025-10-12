@@ -102,6 +102,106 @@ def test_gemini_connection():
 
 
 
+# Get direct response from Gemini API
+def get_gemini_direct_response(voice_input):
+    """
+    Use Gemini API to provide a direct response to user's voice input
+    """
+    if not voice_input or not genai:
+        logger.warning("No voice input provided or Gemini not available")
+        return "I'm sorry, I couldn't process your request."
+    
+    try:
+        logger.info("Making Gemini API call for direct response...")
+        
+        # Enhanced prompt for direct response
+        direct_response_prompt = f"""You are Iris, a helpful AI assistant. The user has spoken to you via voice input. Respond naturally and helpfully to what they've said.
+
+Guidelines:
+1. Be conversational and friendly
+2. If they're asking for help with something, provide useful assistance
+3. If they're making a request, acknowledge it and offer to help
+4. Keep responses concise but informative
+5. If you're unsure what they want, ask for clarification
+6. Be helpful and proactive
+
+User's voice input: {voice_input}
+
+Respond as Iris:"""
+
+        # Configure safety settings to be less restrictive
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
+
+        # Use generation config for better control
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.7,  # Slightly more creative for conversational responses
+        )
+        
+        model = genai.GenerativeModel('gemini-2.5-flash')
+
+        logger.info("Sending direct response prompt to Gemini...")
+        logger.info(f"Using model: gemini-2.5-flash")
+
+        response = model.generate_content(
+            direct_response_prompt,
+            generation_config=generation_config,
+            safety_settings=safety_settings,
+            request_options={'timeout': 15}
+        )        
+
+        logger.info(f"Gemini direct response: {response.text}")
+        
+        # Better error handling for blocked responses
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'finish_reason'):
+                logger.info(f"Direct response finish reason: {candidate.finish_reason}")
+                
+                if candidate.finish_reason == 2:  # SAFETY
+                    logger.warning("⚠️ Direct response was blocked by safety filters")
+                    return "I understand you're trying to communicate with me. Could you rephrase that in a different way?"
+                elif candidate.finish_reason == 3:  # RECITATION  
+                    logger.warning("⚠️ Direct response was blocked due to recitation")
+                    return "I heard what you said, but I need to respond in my own words. Could you try asking that differently?"
+        
+        # Try to access text
+        if hasattr(response, 'text'):
+            logger.info(f"Gemini direct response text: {response.text}")
+        else:
+            logger.warning("Response has no 'text' attribute")
+            logger.info(f"Available attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+       
+        if response and hasattr(response, 'text') and response.text:
+            direct_response = response.text.strip()
+            logger.info(f"Gemini direct response: '{voice_input}' → '{direct_response}'")
+            return direct_response
+        else:
+            logger.warning("Gemini returned empty response")
+            return "I heard you, but I'm having trouble formulating a response. Could you try again?"
+            
+    except Exception as e:
+        logger.error(f"Gemini direct response error: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        return "I'm experiencing some technical difficulties. Please try again in a moment."
+
+
 # Refine user speech using Gemini API
 def gemini_refinement(raw_speech):
     """
@@ -369,6 +469,47 @@ def process_command():
         return jsonify({
             'success': False,
             'error': f'Command processing failed: {str(e)}'
+        }), 500
+
+@app.route('/api/gemini-direct-response', methods=['POST'])
+def gemini_direct_response():
+    """Get direct response from Gemini for voice input without filtering"""
+    try:
+        data = request.get_json()
+        voice_input = data.get('voice_input', '')
+        
+        if not voice_input:
+            return jsonify({'success': False, 'error': 'No voice input provided'}), 400
+        
+        logger.info(f"Getting direct Gemini response for: {voice_input}")
+        
+        # Use Gemini for direct response
+        if os.getenv('GEMINI_API_KEY') and genai:
+            try:
+                logger.info("Using Gemini for direct response...")
+                direct_response = get_gemini_direct_response(voice_input)
+                if not direct_response:
+                    direct_response = "I'm sorry, I couldn't process your request. Please try again."
+            except Exception as gemini_error:
+                logger.warning(f"Gemini direct response failed: {gemini_error}")
+                direct_response = "I'm having trouble connecting to my AI service. Please try again later."
+        else:
+            logger.warning("No Gemini API key found, using fallback response")
+            direct_response = f"I heard you say: '{voice_input}'. I'm ready to help, but I need my AI service to be configured."
+        
+        logger.info(f"Gemini direct response: {direct_response}")
+        
+        return jsonify({
+            'success': True,
+            'voice_input': voice_input,
+            'gemini_response': direct_response
+        })
+        
+    except Exception as e:
+        logger.error(f"Gemini direct response error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Direct response failed: {str(e)}'
         }), 500
 
 

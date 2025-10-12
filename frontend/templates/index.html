@@ -943,30 +943,21 @@
       // Process transcribed text through the voice pipeline
       async function processTranscribedText(transcribedText) {
         try {
-          console.log('Processing speech through voice pipeline...')
+          console.log('Processing speech through direct Gemini response...')
           console.log('Transcribed:', transcribedText)
 
-          // Step 1: Refine speech with Gemini
-          const refinement = await refineSpeech(transcribedText)
-          if (!refinement.success) {
-            throw new Error(refinement.error)
+          // Get direct response from Gemini
+          const geminiResponse = await getGeminiDirectResponse(transcribedText)
+          if (!geminiResponse.success) {
+            throw new Error(geminiResponse.error)
           }
 
-          console.log('Refined:', refinement.refined_command)
-
-          // Step 2: Process with ASI:One
-          const processing = await processCommand(refinement.refined_command)
-          if (!processing.success) {
-            throw new Error(processing.error)
-          }
-
-          console.log('ASI:One Response:', processing.asi_one_response)
+          console.log('Gemini Response:', geminiResponse.gemini_response)
 
           // Show results with typing animation
           await displayResponseWithTyping({
-            raw_speech: transcribedText,
-            refined_command: refinement.refined_command,
-            asi_response: processing.asi_one_response,
+            voice_input: transcribedText,
+            gemini_response: geminiResponse.gemini_response,
           })
         } catch (error) {
           console.error('Voice processing error:', error)
@@ -981,7 +972,17 @@
 
       // Speech recognition now handled by Web Speech API above
 
-      // Call Gemini refinement API
+      // Call Gemini direct response API
+      async function getGeminiDirectResponse(voiceInput) {
+        const response = await fetch('/api/gemini-direct-response', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voice_input: voiceInput }),
+        })
+        return await response.json()
+      }
+
+      // Call Gemini refinement API (kept for backward compatibility)
       async function refineSpeech(rawSpeech) {
         const response = await fetch('/api/refine-speech', {
           method: 'POST',
@@ -991,7 +992,7 @@
         return await response.json()
       }
 
-      // Call ASI:One processing API
+      // Call ASI:One processing API (kept for backward compatibility)
       async function processCommand(refinedCommand) {
         const response = await fetch('/api/process-command', {
           method: 'POST',
@@ -1015,10 +1016,16 @@
 
         if (results.error) {
           responseText = results.message
-        } else {
+        } else if (results.gemini_response) {
+          // New direct Gemini response format
+          responseText = results.gemini_response
+        } else if (results.asi_response) {
+          // Legacy ASI response format (kept for backward compatibility)
           responseText =
             results.asi_response.suggested_action ||
             `I understand you want to: ${results.refined_command}. How can I help you proceed?`
+        } else {
+          responseText = "I'm not sure how to respond to that. Could you try again?"
         }
 
         // Wait for the response container to become visible, then scroll to ensure it's in view
