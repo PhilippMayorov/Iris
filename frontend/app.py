@@ -14,6 +14,7 @@ import logging
 import base64
 import io
 import re
+import requests
 from dotenv import load_dotenv
 # Import will be handled later in the initialization section
 
@@ -102,14 +103,176 @@ def test_gemini_connection():
 
 
 
+# Music-related keyword detection
+def is_music_related_request(text):
+    """
+    Detect if the user's request is music-related
+    """
+    if not text:
+        return False
+    
+    # Convert to lowercase for case-insensitive matching
+    text_lower = text.lower()
+    
+    # Music-related keywords
+    music_keywords = [
+        'music', 'song', 'songs', 'play', 'playing', 'playlist', 'artist', 'album',
+        'spotify', 'search for', 'find', 'listen', 'hear', 'track', 'tracks',
+        'play music', 'play song', 'play songs', 'search music', 'search songs',
+        'what song', 'what music', 'recommend', 'suggest', 'genre', 'band',
+        'singer', 'musician', 'concert', 'lyrics', 'beat', 'rhythm', 'melody',
+        'drake', 'taylor swift', 'beyonce', 'ed sheeran', 'justin bieber',
+        'ariana grande', 'billie eilish', 'the weeknd', 'post malone',
+        'kanye west', 'rihanna', 'adele', 'bruno mars', 'shawn mendes'
+    ]
+    
+    # Check if any music keyword is present
+    for keyword in music_keywords:
+        if keyword in text_lower:
+            return True
+    
+    return False
+
+# Call Spotify agent endpoint
+def call_spotify_agent(user_request):
+    """
+    Call the Spotify agent endpoint with the user's music request
+    """
+    try:
+        logger.info(f"Calling Spotify agent with request: {user_request}")
+        
+        # Spotify agent endpoint
+        spotify_url = "http://localhost:8005/chat"
+        
+        # Prepare the request payload
+        payload = {
+            "text": user_request
+        }
+        
+        # Make the request to Spotify agent
+        response = requests.post(
+            spotify_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30  # 30 second timeout
+        )
+        
+        if response.status_code == 200:
+            spotify_response = response.json()
+            logger.info(f"Spotify agent response: {spotify_response}")
+            return spotify_response
+        else:
+            logger.error(f"Spotify agent returned status {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling Spotify agent: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error calling Spotify agent: {str(e)}")
+        return None
+
+# Process music request through Spotify agent and Gemini
+def process_music_request(voice_input):
+    """
+    Process music-related requests through Spotify agent and then through Gemini
+    """
+    try:
+        logger.info(f"Processing music request: {voice_input}")
+        
+        # Call Spotify agent
+        spotify_response = call_spotify_agent(voice_input)
+        
+        if not spotify_response:
+            return "I'm having trouble connecting to the music service. Please try again later."
+        
+        # Process Spotify response through Gemini for user-friendly output
+        if genai and os.getenv('GEMINI_API_KEY'):
+            try:
+                # Create a prompt to make the Spotify response more user-friendly
+                music_processing_prompt = f"""You are Iris, a helpful AI assistant. The user made a music request, and here's what the music service found:
+
+User's request: {voice_input}
+Music service response: {spotify_response}
+
+Please provide a friendly, conversational response to the user about what was found. Make it sound natural and helpful, as if you're personally helping them with their music request. Keep it concise but informative.
+
+Respond as Iris:"""
+
+                # Configure safety settings
+                safety_settings = [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "threshold": "BLOCK_NONE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_HATE_SPEECH",
+                        "threshold": "BLOCK_NONE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "threshold": "BLOCK_NONE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "threshold": "BLOCK_NONE"
+                    }
+                ]
+
+                # Use generation config
+                generation_config = genai.types.GenerationConfig(
+                    temperature=0.7,
+                )
+                
+                model = genai.GenerativeModel('gemini-2.5-flash')
+
+                logger.info("Processing Spotify response through Gemini...")
+
+                response = model.generate_content(
+                    music_processing_prompt,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                    request_options={'timeout': 15}
+                )
+
+                if response and hasattr(response, 'text') and response.text:
+                    processed_response = response.text.strip()
+                    logger.info(f"Gemini processed music response: {processed_response}")
+                    return processed_response
+                else:
+                    logger.warning("Gemini returned empty response for music request")
+                    return f"I found some music for you: {spotify_response}"
+                    
+            except Exception as gemini_error:
+                logger.warning(f"Gemini processing failed for music request: {gemini_error}")
+                return f"I found some music for you: {spotify_response}"
+        else:
+            # Fallback if Gemini is not available
+            logger.warning("Gemini not available, returning raw Spotify response")
+            return f"I found some music for you: {spotify_response}"
+            
+    except Exception as e:
+        logger.error(f"Error processing music request: {str(e)}")
+        return "I'm having trouble processing your music request. Please try again."
+
 # Get direct response from Gemini API
 def get_gemini_direct_response(voice_input):
     """
     Use Gemini API to provide a direct response to user's voice input
     """
-    if not voice_input or not genai:
-        logger.warning("No voice input provided or Gemini not available")
+    if not voice_input:
+        logger.warning("No voice input provided")
         return "I'm sorry, I couldn't process your request."
+    
+    # Check if this is a music-related request
+    if is_music_related_request(voice_input):
+        logger.info("Music-related request detected, routing to Spotify agent")
+        return process_music_request(voice_input)
+    
+    # If not music-related, use Gemini for general responses
+    if not genai:
+        logger.warning("Gemini not available for non-music requests")
+        return "I heard you, but I need my AI service to be configured to help with that."
     
     try:
         logger.info("Making Gemini API call for direct response...")

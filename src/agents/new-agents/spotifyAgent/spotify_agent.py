@@ -463,7 +463,7 @@ Examples:
             
         elif action == "search_music":
             search_query = intent.get("query", text)
-            return search_music_chat_response(search_query)
+            return await search_music_chat_response(search_query)
             
         elif action == "recommend_music":
             context = intent.get("context", "general")
@@ -1143,6 +1143,99 @@ async def handle_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
     # We are not interested in the acknowledgements for this example, but they can be useful to
     # implement read receipts, for example.
     ctx.logger.info(f"Received acknowledgement from {sender} for message {msg.acknowledged_msg_id}")
+
+# HTTP endpoint models
+class ChatRequest(Model):
+    text: str
+
+class ChatResponse(Model):
+    success: bool
+    message: str
+    request_id: str
+
+class CapabilitiesResponse(Model):
+    agent_name: str
+    capabilities: List[str]
+    supported_genres: List[str]
+    example_commands: List[str]
+    endpoints: Dict[str, str]
+
+class HealthResponse(Model):
+    status: str
+    agent_address: str
+    spotify_api: str
+    timestamp: int
+
+# HTTP endpoint handlers
+@agent.on_rest_post("/chat", ChatRequest, ChatResponse)
+async def handle_chat_http(ctx: Context, req: ChatRequest) -> ChatResponse:
+    """Handle HTTP chat requests"""
+    try:
+        if not req.text:
+            return ChatResponse(
+                success=False,
+                message="No text provided in request",
+                request_id=str(uuid4())
+            )
+        
+        # Process the request using AI
+        response_text = await process_user_request_with_ai(ctx, req.text)
+        
+        return ChatResponse(
+            success=True,
+            message=response_text,
+            request_id=str(uuid4())
+        )
+        
+    except Exception as e:
+        ctx.logger.error(f"Error handling HTTP chat request: {e}")
+        return ChatResponse(
+            success=False,
+            message=f"Error processing request: {str(e)}",
+            request_id=str(uuid4())
+        )
+
+@agent.on_rest_get("/capabilities", CapabilitiesResponse)
+async def handle_capabilities_http(ctx: Context) -> CapabilitiesResponse:
+    """Handle HTTP capabilities request"""
+    return CapabilitiesResponse(
+        agent_name="Spotify Playlist Agent",
+        capabilities=[
+            "Create custom playlists based on genre/mood",
+            "Search music catalog",
+            "Get music recommendations",
+            "Retrieve user playlists",
+            "Get random songs from playlists",
+            "Natural language processing"
+        ],
+        supported_genres=["hip-hop", "pop", "rock", "electronic", "chill"],
+        example_commands=[
+            "Create a pop playlist with 20 songs",
+            "Search for songs by The Weeknd",
+            "Recommend workout music",
+            "Show me my playlists",
+            "Give me a song from Liked Songs"
+        ],
+        endpoints={
+            "chat": "POST /chat - Send natural language requests",
+            "capabilities": "GET /capabilities - Get this information",
+            "health": "GET /health - Check agent status"
+        }
+    )
+
+@agent.on_rest_get("/health", HealthResponse)
+async def handle_health_http(ctx: Context) -> HealthResponse:
+    """Handle HTTP health check request"""
+    global spotify_client
+    
+    spotify_status = "connected" if spotify_client is not None else "disconnected"
+    
+    return HealthResponse(
+        status="healthy",
+        agent_address=str(agent.address),
+        spotify_api=spotify_status,
+        timestamp=int(datetime.now().timestamp())
+    )
 
 # HTTP endpoint handlers for testing (optional)
 @agent.on_interval(period=300.0)  # Every 5 minutes
