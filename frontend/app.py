@@ -184,7 +184,30 @@ def process_music_request(voice_input):
         spotify_response = call_spotify_agent(voice_input)
         
         if not spotify_response:
-            return "I'm having trouble connecting to the music service. Please try again later."
+            # Enhanced error message for Spotify connection issues
+            return "I'm having trouble connecting to the music service. To use music features, please click the 'Integrate with apps' button in the top right corner and connect your Spotify account."
+        
+        # Check if the Spotify response indicates authentication/connection issues
+        if isinstance(spotify_response, dict):
+            spotify_text = str(spotify_response).lower()
+        else:
+            spotify_text = str(spotify_response).lower()
+        
+        # Check for common Spotify error patterns
+        spotify_error_patterns = [
+            'not authenticated', 'authentication failed', 'authorization required',
+            'login required', 'permission denied', 'access denied', 'token expired',
+            'invalid token', 'unable to access', 'cannot connect', 'integration failed',
+            'api error', 'service unavailable', 'trouble connecting', 'connection failed',
+            'agent not available', 'agent connection failed', 'cannot reach', 'timeout',
+            'connection refused', 'service down', 'unreachable'
+        ]
+        
+        has_spotify_error = any(pattern in spotify_text for pattern in spotify_error_patterns)
+        
+        if has_spotify_error:
+            logger.warning(f"Spotify error detected in response: {spotify_response}")
+            return "I'm having trouble accessing your music service. To use music features, please click the 'Integrate with apps' button in the top right corner and connect your Spotify account."
         
         # Process Spotify response through Gemini for user-friendly output
         if genai and os.getenv('GEMINI_API_KEY'):
@@ -196,6 +219,8 @@ User's request: {voice_input}
 Music service response: {spotify_response}
 
 Please provide a friendly, conversational response to the user about what was found. Make it sound natural and helpful, as if you're personally helping them with their music request. Keep it concise but informative.
+
+IMPORTANT: If the music service response indicates any authentication, connection, or access issues, you MUST tell the user to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
 
 Respond as Iris:"""
 
@@ -253,7 +278,7 @@ Respond as Iris:"""
             
     except Exception as e:
         logger.error(f"Error processing music request: {str(e)}")
-        return "I'm having trouble processing your music request. Please try again."
+        return "I'm having trouble processing your music request. To use music features, please click the 'Integrate with apps' button in the top right corner and connect your Spotify account."
 
 # Get direct response from Gemini API
 def get_gemini_direct_response(voice_input):
@@ -277,7 +302,7 @@ def get_gemini_direct_response(voice_input):
     try:
         logger.info("Making Gemini API call for direct response...")
         
-        # Enhanced prompt for direct response
+        # Enhanced prompt for direct response with Spotify integration guidance
         direct_response_prompt = f"""You are Iris, a helpful AI assistant. The user has spoken to you via voice input. Respond naturally and helpfully to what they've said.
 
 Guidelines:
@@ -287,6 +312,7 @@ Guidelines:
 4. Keep responses concise but informative
 5. If you're unsure what they want, ask for clarification
 6. Be helpful and proactive
+7. IMPORTANT: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
 
 User's voice input: {voice_input}
 

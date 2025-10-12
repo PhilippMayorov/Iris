@@ -863,7 +863,29 @@
           'spotify.*service.*down',
           'connection.*refused',
           'connection.*timeout',
-          'service.*unavailable'
+          'service.*unavailable',
+          'not authenticated',
+          'authentication failed',
+          'authorization required',
+          'login required',
+          'permission denied',
+          'access denied',
+          'token expired',
+          'invalid token',
+          'unable to access',
+          'cannot connect',
+          'integration failed',
+          'api error',
+          'service unavailable',
+          'trouble connecting',
+          'connection failed',
+          'agent not available',
+          'agent connection failed',
+          'cannot reach',
+          'timeout',
+          'connection refused',
+          'service down',
+          'unreachable'
         ]
         
         // Check for specific error patterns first
@@ -920,6 +942,12 @@
 
       // Add Spotify connection prompt to error messages
       function addSpotifyConnectionPrompt(responseText) {
+        // Check if the response already contains integration guidance
+        if (responseText.toLowerCase().includes('integrate with apps') || 
+            responseText.toLowerCase().includes('top right corner')) {
+          return responseText // Don't add duplicate guidance
+        }
+        
         const connectionPrompt = '\n\n🎵 To use Spotify features, please click the "Integrate with apps" button in the top right corner and connect your Spotify account.'
         return responseText + connectionPrompt
       }
