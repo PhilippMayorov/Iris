@@ -1,0 +1,24 @@
+#!/bin/bash
+# Simple CLI launcher for Mailbox Agent
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Change to the script directory
+cd "$SCRIPT_DIR"
+
+# Check if Python is available
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 is not installed or not in PATH"
+    exit 1
+fi
+
+# Check if ASI_ONE_API_KEY is set
+if [ -z "$ASI_ONE_API_KEY" ]; then
+    echo "❌ ASI_ONE_API_KEY environment variable not set"
+    echo "Please set your API key: export ASI_ONE_API_KEY='your_key_here'"
+    exit 1
+fi
+
+# Run the CLI launcher
+python3 start_cli.py "$@"

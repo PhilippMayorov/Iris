@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from email.message import EmailMessage
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict
 from uuid import uuid4
 
 import google.auth
@@ -66,19 +66,7 @@ OAUTH_BASE_URL = f'http://{OAUTH_SERVER_HOST}:{OAUTH_SERVER_PORT}'
 oauth_server = None
 oauth_server_thread = None
 
-# Memory cleanup function
-def clear_memory_file():
-    """Clear the memory data file"""
-    try:
-        memory_file = "agent1qw6kgumlfq_data.json"
-        if os.path.exists(memory_file):
-            with open(memory_file, 'w') as f:
-                f.write("{}")
-            print(f"✅ Cleared memory file: {memory_file}")
-        else:
-            print(f"ℹ️ Memory file not found: {memory_file}")
-    except Exception as e:
-        print(f"❌ Error clearing memory file: {e}")
+# No memory cleanup needed - mailbox agent manages all conversation context
 
 # Signal handler for graceful shutdown
 def signal_handler(signum, frame):
@@ -130,6 +118,26 @@ class EmailStatusResponse(Model):
     message_id: Optional[str] = None
     error_message: Optional[str] = None
     success: bool = False
+
+# Agent-to-Agent Communication Models (for mailbox agent communication)
+class AgentEmailRequest(Model):
+    """Request from mailbox agent to gmail agent for email sending"""
+    to: str
+    subject: str
+    body: str
+    from_email: Optional[str] = None
+    original_message: str  # The original user message for context
+    conversation_history: Optional[List[Dict[str, str]]] = None  # Full conversation context
+
+class AgentEmailResponse(Model):
+    """Response from gmail agent to mailbox agent"""
+    success: bool
+    message_id: Optional[str] = None
+    error_message: Optional[str] = None
+    status_code: int = 200
+    needs_clarification: bool = False
+    suggestions: Optional[List[str]] = None
+    reasoning: Optional[str] = None
 
 
 class EmailStatus(str, Enum):
@@ -369,6 +377,140 @@ async def handle_email_request(ctx: Context, sender: str, msg: EmailSendRequest)
             success=False
         )
         ctx.logger.error(f"Failed to send email: {result['error']}")
+    
+    await ctx.send(sender, response)
+
+@proto.on_message(AgentEmailRequest, replies={AgentEmailResponse, ErrorMessage})
+async def handle_agent_email_request(ctx: Context, sender: str, msg: AgentEmailRequest):
+    """
+    Handle email requests from mailbox agent with intelligent processing
+    
+    Args:
+        ctx: Agent context
+        sender: Address of the requesting agent (mailbox agent)
+        msg: Agent email request with original user message
+    """
+    ctx.logger.info(f"📧 Received agent email request from {sender}")
+    ctx.logger.info(f"📧 Original message: {msg.original_message}")
+    ctx.logger.info(f"📧 To: {msg.to}, Subject: {msg.subject}")
+    
+    # Check OAuth authentication first
+    is_authenticated, auth_message = check_oauth_credentials()
+    if not is_authenticated:
+        response = AgentEmailResponse(
+            success=False,
+            error_message=f"Gmail authentication required: {auth_message}",
+            status_code=401,
+            needs_clarification=False
+        )
+        ctx.logger.error(f"📧 Authentication failed: {auth_message}")
+        await ctx.send(sender, response)
+        return
+    
+    # Use ASI:One to process the original message and extract email information
+    if asi_one_client:
+        # Use conversation history from the mailbox agent (no local storage)
+        conversation_history = msg.conversation_history or []
+        ctx.logger.info(f"📧 Using conversation history from mailbox agent: {len(conversation_history)} messages")
+        
+        # Process with ASI:One using the conversation context from mailbox agent
+        email_info = process_email_request_with_asi_one(msg.original_message, conversation_history)
+        ctx.logger.info(f"📧 ASI:One processing result: {email_info}")
+        
+        # Debug: Log the actual ASI:One response fields
+        if email_info.get("error") and "ASI:One processing failed" in email_info.get("error", ""):
+            ctx.logger.error(f"📧 ASI:One processing failed: {email_info.get('error')}")
+        else:
+            ctx.logger.info(f"📧 ASI:One is_valid_format: {email_info.get('is_valid_format')}")
+            ctx.logger.info(f"📧 ASI:One needs_clarification: {email_info.get('needs_clarification')}")
+        
+        # Check if ASI:One needs clarification
+        if not email_info["is_valid_format"] or email_info.get("needs_clarification", False):
+            # Get the error message, handling None values properly
+            error_msg = email_info.get("error")
+            if not error_msg or error_msg == "None":
+                error_msg = "Need more information to send the email"
+            
+            # Return clarification request
+            response = AgentEmailResponse(
+                success=False,
+                error_message=error_msg,
+                status_code=400,
+                needs_clarification=True,
+                suggestions=email_info.get("suggestions", []),
+                reasoning=email_info.get("reasoning", "")
+            )
+            ctx.logger.info(f"📧 Returning clarification request: {error_msg}")
+            await ctx.send(sender, response)
+            return
+        
+        # Use ASI:One extracted information
+        final_to = email_info.get("to", msg.to)
+        final_subject = email_info.get("subject", msg.subject)
+        final_body = email_info.get("body", msg.body)
+        
+    else:
+        # Fallback to provided information
+        final_to = msg.to
+        final_subject = msg.subject
+        final_body = msg.body
+    
+    # Validate final email information
+    if not final_to or not final_to.strip():
+        response = AgentEmailResponse(
+            success=False,
+            error_message="Missing recipient email address",
+            status_code=400,
+            needs_clarification=True,
+            suggestions=["Please provide the recipient's email address"],
+            reasoning="No email address found in the request"
+        )
+        ctx.logger.error("📧 Missing recipient email address")
+        await ctx.send(sender, response)
+        return
+    
+    if not final_body or not final_body.strip():
+        response = AgentEmailResponse(
+            success=False,
+            error_message="Missing message content - what would you like to say?",
+            status_code=400,
+            needs_clarification=True,
+            suggestions=[
+                "What would you like to say in the email?",
+                "Please provide the message content"
+            ],
+            reasoning="No message content found in the request"
+        )
+        ctx.logger.error("📧 Missing message content")
+        await ctx.send(sender, response)
+        return
+    
+    # Send the email
+    result = send_gmail_message(
+        to_email=final_to,
+        subject=final_subject or "",
+        body=final_body,
+        from_email=msg.from_email
+    )
+    
+    # Create response
+    if result["success"]:
+        response = AgentEmailResponse(
+            success=True,
+            message_id=result["message_id"],
+            status_code=200,
+            needs_clarification=False,
+            reasoning=email_info.get("reasoning", "") if asi_one_client else ""
+        )
+        ctx.logger.info(f"📧 Email sent successfully. Message ID: {result['message_id']}")
+    else:
+        response = AgentEmailResponse(
+            success=False,
+            error_message=result["error"],
+            status_code=500,
+            needs_clarification=False
+        )
+        ctx.logger.error(f"📧 Failed to send email: {result['error']}")
     
     await ctx.send(sender, response)
 
@@ -705,16 +847,8 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     
     ctx.logger.info(f"Received chat message: {text}")
     
-    # Get conversation history for this sender
-    conversation_key = f"conversation_{sender}"
-    try:
-        conversation_history = ctx.storage.get(conversation_key)
-        if conversation_history is None:
-            conversation_history = []
-        ctx.logger.info(f"Retrieved conversation history for {sender}: {len(conversation_history)} messages")
-    except Exception as e:
-        ctx.logger.warning(f"Failed to retrieve conversation history for {sender}: {e}")
-        conversation_history = []
+    # No local conversation history storage - mailbox agent manages all context
+    conversation_history = []
     
     # Check OAuth authentication status
     is_authenticated, auth_message = check_oauth_credentials()
@@ -766,20 +900,7 @@ After authentication, you can send emails normally!
 
 What would you like to send today?"""
         
-        # Update conversation history for greeting responses
-        conversation_history.append({"role": "user", "content": text})
-        conversation_history.append({"role": "assistant", "content": response_text})
-        
-        # Keep only last 10 messages to prevent context from growing too large
-        if len(conversation_history) > 20:  # 10 user + 10 assistant messages
-            conversation_history = conversation_history[-20:]
-        
-        # Store updated conversation history
-        try:
-            ctx.storage.set(conversation_key, conversation_history)
-            ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
-        except Exception as e:
-            ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
+        # No conversation history storage - mailbox agent manages all context
         
         await ctx.send(sender, ChatMessage(
             timestamp=datetime.utcnow(),
@@ -869,20 +990,7 @@ After authentication, you can send emails using natural language.
 
 **💡 Tip:** Be as specific or casual as you want - I can understand both! Just talk to me naturally!"""
         
-        # Update conversation history for error responses
-        conversation_history.append({"role": "user", "content": text})
-        conversation_history.append({"role": "assistant", "content": response_text})
-        
-        # Keep only last 10 messages to prevent context from growing too large
-        if len(conversation_history) > 20:  # 10 user + 10 assistant messages
-            conversation_history = conversation_history[-20:]
-        
-        # Store updated conversation history
-        try:
-            ctx.storage.set(conversation_key, conversation_history)
-            ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
-        except Exception as e:
-            ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
+        # No conversation history storage - mailbox agent manages all context
         
         await ctx.send(sender, ChatMessage(
             timestamp=datetime.utcnow(),
@@ -917,20 +1025,7 @@ After authentication, you can send emails using natural language.
     else:
         response_text = f"❌ Failed to send email: {result['error']}"
     
-    # Update conversation history
-    conversation_history.append({"role": "user", "content": text})
-    conversation_history.append({"role": "assistant", "content": response_text})
-    
-    # Keep only last 10 messages to prevent context from growing too large
-    if len(conversation_history) > 20:  # 10 user + 10 assistant messages
-        conversation_history = conversation_history[-20:]
-    
-    # Store updated conversation history
-    try:
-        ctx.storage.set(conversation_key, conversation_history)
-        ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
-    except Exception as e:
-        ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
+    # No conversation history storage - mailbox agent manages all context
     
     # Send response back
     await ctx.send(sender, ChatMessage(
@@ -959,9 +1054,7 @@ async def startup(ctx: Context):
     """Agent startup event"""
     ctx.logger.info(f"Gmail Agent started: {agent.address}")
     
-    # Clear memory file on startup for fresh start
-    ctx.logger.info("🧹 Clearing memory file for fresh start...")
-    clear_memory_file()
+    # No memory management needed - mailbox agent handles all conversation context
     
     # Start OAuth server for web-based authentication
     if start_oauth_server():
@@ -981,6 +1074,7 @@ async def startup(ctx: Context):
         ctx.logger.warning("Users will be prompted to authenticate before sending emails")
     
     ctx.logger.info("Chat protocol enabled for natural language email requests")
+    ctx.logger.info("📧 Gmail agent operates in stateless mode - mailbox agent manages all conversation context")
     if asi_one_client:
         ctx.logger.info("✅ ASI:One AI integration enabled - all email parsing handled by AI")
         ctx.logger.info("🎯 No strict formatting requirements - AI handles all parsing intelligently")
@@ -1022,3 +1116,4 @@ if __name__ == "__main__":
     
     print("\nStarting agent...")
     agent.run()
+
