@@ -1,0 +1,14 @@
+{
+    "alice": {
+        "identity_key": "be4ee528b9f063e469d652e18ac562f7724fe2d5444477dce8ed49a2d4344657",
+        "wallet_key": "5KkML4oRqoZojdOvVQTPhvT0q+7qC/iwdtvkhAiVPGA="
+    },
+    "Test Client": {
+        "identity_key": "3eafa7708f60f8122d08b0cb0be3257d1f1a558b714c21d02a645598cd3ba24e",
+        "wallet_key": "4KlspIa1eo3ggi+ixiCQhZ0Y/IfKEcV5EPWYkLXFjWA="
+    },
+    "Gmail Test Client": {
+        "identity_key": "471f795fcaa69d66c407b6a50813af3e736bc0eaea3ba5d803b469dfe92dbced",
+        "wallet_key": "00mYpPsWubE4Bc82nJSRvUwOUgtbLY3ncicZQQ9Ylh8="
+    }
+}
