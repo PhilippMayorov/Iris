@@ -9,7 +9,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GRPC_VERBOSITY'] = 'ERROR'
 os.environ['GRPC_TRACE'] = ''
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 import logging
 import base64
 import io
@@ -242,6 +242,11 @@ def index():
     """Main page - Hello World for testing"""
     return render_template('index.html')
 
+@app.route('/test-spotify')
+def test_spotify():
+    """Test page for Spotify integration debugging"""
+    return render_template('test_spotify.html')
+
 @app.route('/api/health')
 def health():
     """Health check endpoint"""
@@ -384,32 +389,124 @@ def process_voice():
     
     return jsonify(response)
 
-if __name__ == '__main__':
-    logger.info("Starting Vocal Agent Desktop GUI...")
-    
+@app.route('/api/spotify/auth')
+def spotify_auth():
+    """Initiate Spotify OAuth authentication"""
     try:
-        # Import FlaskUI here to avoid issues if not available
-        from flaskwebgui import FlaskUI
+        # Import spotipy here to avoid issues if not installed
+        import spotipy
+        from spotipy.oauth2 import SpotifyOAuth
         
-        # Initialize FlaskUI with Chrome flags to suppress warnings
-        ui = FlaskUI(
-            app=app,
-            server="flask",
-            width=1200,
-            height=800,
-            port=5001,
+        # Get Spotify credentials from environment
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        # Override redirect URI for frontend integration
+        redirect_uri = 'http://127.0.0.1:5001/api/spotify/callback'
+        
+        if not all([client_id, client_secret]):
+            return jsonify({
+                'success': False,
+                'error': 'Spotify credentials not configured. Please check your .env file.'
+            }), 400
+        
+        # Spotify scopes needed for playlist creation and music search
+        scope = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
+        
+        # Create auth manager
+        auth_manager = SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            scope=scope,
+            cache_path=".spotify_cache"
         )
         
-        # Start the desktop GUI
-        logger.info("Opening desktop application window...")
-        ui.run()
+        # Get authorization URL
+        auth_url = auth_manager.get_authorize_url()
+        
+        logger.info(f"Spotify auth URL generated: {auth_url}")
+        
+        return jsonify({
+            'success': True,
+            'auth_url': auth_url,
+            'message': 'Redirect to Spotify for authentication'
+        })
         
     except ImportError:
-        logger.warning("FlaskUI not available. Starting standard Flask server...")
-        logger.info("Please open http://127.0.0.1:5001 in your browser")
-        app.run(debug=True, host='127.0.0.1', port=5001)
+        return jsonify({
+            'success': False,
+            'error': 'Spotify library not installed. Please install spotipy.'
+        }), 500
     except Exception as e:
-        logger.warning(f"FlaskUI failed to start: {e}")
-        logger.info("Falling back to standard Flask server...")
-        logger.info("Please open http://127.0.0.1:5001 in your browser")
-        app.run(debug=True, host='127.0.0.1', port=5001)
+        logger.error(f"Spotify auth error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Spotify authentication failed: {str(e)}'
+        }), 500
+
+@app.route('/api/spotify/callback')
+def spotify_callback():
+    """Handle Spotify OAuth callback"""
+    try:
+        # Import spotipy here to avoid issues if not installed
+        import spotipy
+        from spotipy.oauth2 import SpotifyOAuth
+        
+        # Get the authorization code from the callback
+        code = request.args.get('code')
+        error = request.args.get('error')
+        
+        if error:
+            logger.error(f"Spotify OAuth error: {error}")
+            return redirect(url_for('index') + '?spotify_auth=error')
+        
+        if not code:
+            logger.error("No authorization code received from Spotify")
+            return redirect(url_for('index') + '?spotify_auth=error')
+        
+        # Get Spotify credentials from environment
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        # Override redirect URI for frontend integration
+        redirect_uri = 'http://127.0.0.1:5001/api/spotify/callback'
+        
+        # Spotify scopes
+        scope = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
+        
+        # Create auth manager
+        auth_manager = SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            scope=scope,
+            cache_path=".spotify_cache"
+        )
+        
+        # Exchange code for token
+        token_info = auth_manager.get_access_token(code)
+        
+        if token_info:
+            # Create Spotify client to test the connection
+            spotify = spotipy.Spotify(auth_manager=auth_manager)
+            user_info = spotify.current_user()
+            
+            logger.info(f"Spotify authentication successful for user: {user_info['display_name']}")
+            
+            # Redirect back to main page with success message
+            return redirect(url_for('index') + '?spotify_auth=success')
+        else:
+            logger.error("Failed to get access token from Spotify")
+            return redirect(url_for('index') + '?spotify_auth=error')
+            
+    except ImportError:
+        logger.error("Spotify library not installed")
+        return redirect(url_for('index') + '?spotify_auth=error')
+    except Exception as e:
+        logger.error(f"Spotify callback error: {str(e)}")
+        return redirect(url_for('index') + '?spotify_auth=error')
+
+if __name__ == '__main__':
+    logger.info("Starting Vocal Agent Frontend...")
+    logger.info("Starting standard Flask server...")
+    logger.info("Please open http://127.0.0.1:5001 in your browser")
+    app.run(debug=True, host='127.0.0.1', port=5001)

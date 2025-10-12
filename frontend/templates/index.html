@@ -1059,10 +1059,56 @@
       }
 
       // Handle integration clicks
-      function handleIntegration(appName) {
+      async function handleIntegration(appName) {
         console.log(`click on Integration: ${appName}`)
-        alert(`click on Integration: ${appName}`)
+        
+        if (appName === 'Spotify') {
+          await handleSpotifyIntegration()
+        } else {
+          alert(`Integration with ${appName} is coming soon!`)
+        }
+        
         closeIntegrationPopup()
+      }
+
+      // Handle Spotify integration
+      async function handleSpotifyIntegration() {
+        try {
+          console.log('Starting Spotify authentication...')
+          
+          // Show loading state
+          const spotifyItem = document.querySelector('.integration-item[onclick*="Spotify"]')
+          if (spotifyItem) {
+            spotifyItem.style.opacity = '0.6'
+            spotifyItem.style.pointerEvents = 'none'
+            const originalText = spotifyItem.querySelector('.integration-name').textContent
+            spotifyItem.querySelector('.integration-name').textContent = 'Connecting...'
+          }
+          
+          // Call the backend to get Spotify auth URL
+          const response = await fetch('/api/spotify/auth')
+          const data = await response.json()
+          
+          if (data.success && data.auth_url) {
+            console.log('Redirecting to Spotify authentication...')
+            // Redirect to Spotify OAuth
+            window.location.href = data.auth_url
+          } else {
+            throw new Error(data.error || 'Failed to get Spotify authentication URL')
+          }
+          
+        } catch (error) {
+          console.error('Spotify integration error:', error)
+          alert(`Spotify integration failed: ${error.message}`)
+          
+          // Reset UI state
+          const spotifyItem = document.querySelector('.integration-item[onclick*="Spotify"]')
+          if (spotifyItem) {
+            spotifyItem.style.opacity = ''
+            spotifyItem.style.pointerEvents = ''
+            spotifyItem.querySelector('.integration-name').textContent = 'Spotify'
+          }
+        }
       }
 
       // Smooth scroll to top of page
@@ -1159,10 +1205,39 @@
         })
       }
 
+      // Handle Spotify authentication callback
+      function handleSpotifyCallback() {
+        const urlParams = new URLSearchParams(window.location.search)
+        const spotifyAuth = urlParams.get('spotify_auth')
+        
+        if (spotifyAuth === 'success') {
+          console.log('Spotify authentication successful!')
+          // Show success message
+          setTimeout(() => {
+            alert('🎉 Spotify integration successful! You can now use voice commands to control your music.')
+          }, 500)
+          
+          // Clean up URL
+          window.history.replaceState({}, document.title, window.location.pathname)
+        } else if (spotifyAuth === 'error') {
+          console.log('Spotify authentication failed')
+          // Show error message
+          setTimeout(() => {
+            alert('❌ Spotify authentication failed. Please try again.')
+          }, 500)
+          
+          // Clean up URL
+          window.history.replaceState({}, document.title, window.location.pathname)
+        }
+      }
+
       // Initialize the app when DOM is loaded
       document.addEventListener('DOMContentLoaded', function () {
         console.log('Iris Voice Assistant loaded')
         setState('idle')
+
+        // Handle Spotify authentication callback
+        handleSpotifyCallback()
 
         // Set up button hover feedback
         setupButtonHoverFeedback()

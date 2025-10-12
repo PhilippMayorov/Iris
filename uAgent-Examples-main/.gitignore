@@ -1,0 +1,22 @@
+# AVCTL
+.secrets
+
+# Misc
+*.json
+!db.json
+!project.json
+.history
+
+#Python
+__pycache__
+
+.DS_Store
+*/.DS_Store
+
+# Editors
+.vscode
+.idea
+
+**/*.ipynb_checkpoints/
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
