@@ -830,6 +830,100 @@
         }
       }
 
+      // Check if the response indicates a Spotify integration error
+      function isSpotifyIntegrationError(responseText) {
+        const lowerResponse = responseText.toLowerCase()
+        
+        // Specific Spotify error patterns
+        const spotifyErrorPatterns = [
+          'spotify.*not.*connected',
+          'spotify.*not.*authenticated',
+          'spotify.*authentication.*failed',
+          'spotify.*authorization.*required',
+          'spotify.*login.*required',
+          'spotify.*permission.*denied',
+          'spotify.*access.*denied',
+          'spotify.*token.*expired',
+          'spotify.*invalid.*token',
+          'unable.*to.*access.*spotify',
+          'cannot.*connect.*to.*spotify',
+          'spotify.*integration.*failed',
+          'spotify.*api.*error',
+          'spotify.*service.*unavailable',
+          'trouble.*connecting.*to.*music.*service',
+          'having.*trouble.*connecting.*to.*music',
+          'music.*service.*unavailable',
+          'spotify.*agent.*not.*available',
+          'spotify.*agent.*connection.*failed',
+          'cannot.*reach.*spotify.*agent',
+          'spotify.*agent.*timeout',
+          'spotify.*agent.*error',
+          'try.*again.*later',
+          'music.*service.*down',
+          'spotify.*service.*down',
+          'connection.*refused',
+          'connection.*timeout',
+          'service.*unavailable'
+        ]
+        
+        // Check for specific error patterns first
+        const hasSpecificError = spotifyErrorPatterns.some(pattern => {
+          const regex = new RegExp(pattern, 'i')
+          return regex.test(lowerResponse)
+        })
+        
+        if (hasSpecificError) {
+          return true
+        }
+        
+        // Fallback: Check for Spotify-related terms AND error terms
+        const spotifyErrorKeywords = [
+          'spotify',
+          'music',
+          'play',
+          'song',
+          'playlist',
+          'album',
+          'artist',
+          'service',
+          'agent'
+        ]
+        
+        const errorKeywords = [
+          'error',
+          'failed',
+          'unable',
+          'cannot',
+          'not available',
+          'not connected',
+          'authentication',
+          'authorization',
+          'permission',
+          'denied',
+          'expired',
+          'invalid',
+          'trouble',
+          'connecting',
+          'timeout',
+          'unreachable'
+        ]
+        
+        const hasSpotifyTerms = spotifyErrorKeywords.some(keyword => 
+          lowerResponse.includes(keyword)
+        )
+        const hasErrorTerms = errorKeywords.some(keyword => 
+          lowerResponse.includes(keyword)
+        )
+        
+        return hasSpotifyTerms && hasErrorTerms
+      }
+
+      // Add Spotify connection prompt to error messages
+      function addSpotifyConnectionPrompt(responseText) {
+        const connectionPrompt = '\n\n🎵 To use Spotify features, please click the "Integrate with apps" button in the top right corner and connect your Spotify account.'
+        return responseText + connectionPrompt
+      }
+
       // Initialize Web Speech API
       function initializeSpeechRecognition() {
         try {
@@ -1016,9 +1110,19 @@
 
         if (results.error) {
           responseText = results.message
+          
+          // Check if it's a Spotify-related error
+          if (isSpotifyIntegrationError(responseText)) {
+            responseText = addSpotifyConnectionPrompt(responseText)
+          }
         } else if (results.gemini_response) {
           // New direct Gemini response format
           responseText = results.gemini_response
+          
+          // Check if the response indicates Spotify integration issues
+          if (isSpotifyIntegrationError(responseText)) {
+            responseText = addSpotifyConnectionPrompt(responseText)
+          }
         } else if (results.asi_response) {
           // Legacy ASI response format (kept for backward compatibility)
           responseText =
