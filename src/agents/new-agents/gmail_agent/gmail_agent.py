@@ -9,6 +9,8 @@ Make sure to set up your Google Cloud credentials and enable the Gmail API.
 import base64
 import os
 import re
+import signal
+import sys
 import threading
 import time
 from datetime import datetime
@@ -63,6 +65,31 @@ OAUTH_BASE_URL = f'http://{OAUTH_SERVER_HOST}:{OAUTH_SERVER_PORT}'
 # Global OAuth server instance
 oauth_server = None
 oauth_server_thread = None
+
+# Memory cleanup function
+def clear_memory_file():
+    """Clear the memory data file"""
+    try:
+        memory_file = "agent1qw6kgumlfq_data.json"
+        if os.path.exists(memory_file):
+            with open(memory_file, 'w') as f:
+                f.write("{}")
+            print(f"✅ Cleared memory file: {memory_file}")
+        else:
+            print(f"ℹ️ Memory file not found: {memory_file}")
+    except Exception as e:
+        print(f"❌ Error clearing memory file: {e}")
+
+# Signal handler for graceful shutdown
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    print(f"\n🛑 Received signal {signum} - shutting down gracefully...")
+    print("👋 Gmail Agent shutdown complete")
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
 # Initialize the agent
 agent = Agent(
@@ -932,6 +959,10 @@ async def startup(ctx: Context):
     """Agent startup event"""
     ctx.logger.info(f"Gmail Agent started: {agent.address}")
     
+    # Clear memory file on startup for fresh start
+    ctx.logger.info("🧹 Clearing memory file for fresh start...")
+    clear_memory_file()
+    
     # Start OAuth server for web-based authentication
     if start_oauth_server():
         ctx.logger.info(f"🔐 OAuth server started at {OAUTH_BASE_URL}")
@@ -956,6 +987,13 @@ async def startup(ctx: Context):
     else:
         ctx.logger.warning("❌ ASI:One AI integration disabled - natural language processing unavailable")
         ctx.logger.warning("⚠️ Set ASI_ONE_API_KEY environment variable to enable email functionality")
+
+
+@agent.on_event("shutdown")
+async def shutdown(ctx: Context):
+    """Agent shutdown event"""
+    ctx.logger.info("Gmail Agent shutting down...")
+    ctx.logger.info("👋 Gmail Agent shutdown complete")
 
 
 if __name__ == "__main__":

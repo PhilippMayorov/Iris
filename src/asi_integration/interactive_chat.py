@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 # Handle both relative and absolute imports
 try:
