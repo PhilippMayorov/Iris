@@ -338,3 +338,6 @@ venv/
 .venv/
 env/
 .env/
+
+# Personal data exports
+contacts_export.json

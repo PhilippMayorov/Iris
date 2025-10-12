@@ -29,6 +29,23 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Import contacts functionality
+try:
+    from Contacts import CNContactStore, CNContact, CNContactFormatter
+    from Contacts import CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey
+    from Contacts import CNContactPhoneNumbersKey, CNContactEmailAddressesKey, CNContactPostalAddressesKey
+    from Contacts import CNContactBirthdayKey, CNContactJobTitleKey, CNContactDepartmentNameKey
+    from Contacts import CNContactOrganizationNameKey, CNContactMiddleNameKey, CNContactNoteKey
+    from Contacts import CNContactImageDataKey, CNContactThumbnailImageDataKey
+    from Contacts import CNContactUrlAddressesKey, CNContactInstantMessageAddressesKey, CNContactSocialProfilesKey
+    from Foundation import NSData, NSString
+    import Contacts
+    CONTACTS_AVAILABLE = True
+    logger.info("Contacts framework imported successfully")
+except ImportError as e:
+    logger.warning(f"Contacts framework not available: {e}")
+    CONTACTS_AVAILABLE = False
+
 def clean_text_for_tts(text: str) -> str:
     """
     Clean text for TTS by removing markdown formatting and special characters
@@ -229,6 +246,240 @@ class ChatContextManager:
         
         return preferences
 
+# Contacts Helper Functions
+def get_all_contacts_from_mac():
+    """Retrieve all contacts from the MacBook using PyObjC"""
+    if not CONTACTS_AVAILABLE:
+        logger.error("Contacts framework not available")
+        return []
+    
+    try:
+        store = CNContactStore()
+        
+        # Define the keys we want to fetch
+        keys_to_fetch = [
+            CNContactGivenNameKey,
+            CNContactFamilyNameKey,
+            CNContactNicknameKey,
+            CNContactMiddleNameKey,
+            CNContactPhoneNumbersKey,
+            CNContactEmailAddressesKey,
+            CNContactPostalAddressesKey,
+            CNContactBirthdayKey,
+            CNContactJobTitleKey,
+            CNContactDepartmentNameKey,
+            CNContactOrganizationNameKey,
+            CNContactNoteKey,
+            CNContactImageDataKey,
+            CNContactThumbnailImageDataKey,
+            CNContactUrlAddressesKey,
+            CNContactInstantMessageAddressesKey,
+            CNContactSocialProfilesKey
+        ]
+        
+        # Create a fetch request
+        request = Contacts.CNContactFetchRequest.alloc().initWithKeysToFetch_(keys_to_fetch)
+        
+        # Fetch all contacts
+        contacts = []
+        
+        def contact_enumeration_handler(contact, stop):
+            contacts.append(contact)
+        
+        store.enumerateContactsWithFetchRequest_error_usingBlock_(
+            request, None, contact_enumeration_handler
+        )
+        
+        logger.info(f"Retrieved {len(contacts)} contacts from MacBook")
+        return contacts
+        
+    except Exception as e:
+        logger.error(f"Error fetching contacts: {e}")
+        return []
+
+def format_contact_for_api(contact):
+    """Format contact data into a Python dictionary for API response"""
+    if not CONTACTS_AVAILABLE:
+        return None
+    
+    def safe_get(contact, method_name, default=''):
+        """Safely get a contact property, handling cases where it wasn't fetched."""
+        try:
+            method = getattr(contact, method_name)
+            result = method()
+            return str(result) if result else default
+        except:
+            return default
+    
+    contact_data = {
+        'identifier': str(contact.identifier()),
+        'firstName': safe_get(contact, 'givenName'),
+        'lastName': safe_get(contact, 'familyName'),
+        'middleName': safe_get(contact, 'middleName'),
+        'nickname': safe_get(contact, 'nickname'),
+        'jobTitle': safe_get(contact, 'jobTitle'),
+        'departmentName': safe_get(contact, 'departmentName'),
+        'organizationName': safe_get(contact, 'organizationName'),
+        'note': safe_get(contact, 'note'),
+        'phoneNumbers': [],
+        'emailAddresses': [],
+        'postalAddresses': [],
+        'urlAddresses': [],
+        'instantMessageAddresses': [],
+        'socialProfiles': [],
+        'birthday': '',
+        'hasImage': False,
+        'hasThumbnail': False
+    }
+    
+    # Handle birthday
+    try:
+        birthday = contact.birthday()
+        if birthday and birthday.year() and birthday.month() and birthday.day():
+            contact_data['birthday'] = f"{birthday.year():04d}-{birthday.month():02d}-{birthday.day():02d}"
+    except:
+        pass
+    
+    # Handle phone numbers
+    try:
+        for phone in contact.phoneNumbers():
+            phone_data = {
+                'label': str(phone.label()) if phone.label() else 'Other',
+                'value': str(phone.value().stringValue()) if phone.value() else ''
+            }
+            contact_data['phoneNumbers'].append(phone_data)
+    except:
+        pass
+    
+    # Handle email addresses
+    try:
+        for email in contact.emailAddresses():
+            email_data = {
+                'label': str(email.label()) if email.label() else 'Other',
+                'value': str(email.value()) if email.value() else ''
+            }
+            contact_data['emailAddresses'].append(email_data)
+    except:
+        pass
+    
+    # Handle postal addresses
+    try:
+        for address in contact.postalAddresses():
+            addr = address.value()
+            address_data = {
+                'label': str(address.label()) if address.label() else 'Other',
+                'street': str(addr.street()) if addr.street() else '',
+                'city': str(addr.city()) if addr.city() else '',
+                'state': str(addr.state()) if addr.state() else '',
+                'postalCode': str(addr.postalCode()) if addr.postalCode() else '',
+                'country': str(addr.country()) if addr.country() else '',
+                'formatted': str(CNContactFormatter.stringFromPostalAddress_style_(addr, CNContactFormatterStyleMailingAddress))
+            }
+            contact_data['postalAddresses'].append(address_data)
+    except:
+        pass
+    
+    # Handle URL addresses
+    try:
+        for url in contact.urlAddresses():
+            url_data = {
+                'label': str(url.label()) if url.label() else 'Other',
+                'value': str(url.value()) if url.value() else ''
+            }
+            contact_data['urlAddresses'].append(url_data)
+    except:
+        pass
+    
+    # Handle instant message addresses
+    try:
+        for im in contact.instantMessageAddresses():
+            im_data = {
+                'label': str(im.label()) if im.label() else 'Other',
+                'service': str(im.value().service()) if im.value() else '',
+                'username': str(im.value().username()) if im.value() else ''
+            }
+            contact_data['instantMessageAddresses'].append(im_data)
+    except:
+        pass
+    
+    # Handle social profiles
+    try:
+        for social in contact.socialProfiles():
+            social_data = {
+                'label': str(social.label()) if social.label() else 'Other',
+                'service': str(social.value().service()) if social.value() else '',
+                'username': str(social.value().username()) if social.value() else '',
+                'urlString': str(social.value().urlString()) if social.value() else ''
+            }
+            contact_data['socialProfiles'].append(social_data)
+    except:
+        pass
+    
+    # Check for images
+    try:
+        contact_data['hasImage'] = contact.imageData() is not None
+    except:
+        contact_data['hasImage'] = False
+    
+    try:
+        contact_data['hasThumbnail'] = contact.thumbnailImageData() is not None
+    except:
+        contact_data['hasThumbnail'] = False
+    
+    return contact_data
+
+def filter_contacts(contacts, filters):
+    """Filter contacts based on provided criteria"""
+    if not filters:
+        return contacts
+    
+    filtered_contacts = []
+    
+    for contact in contacts:
+        include_contact = True
+        
+        # Filter by has email addresses
+        if filters.get('has_email', False):
+            if not contact.get('emailAddresses') or len(contact['emailAddresses']) == 0:
+                include_contact = False
+        
+        # Filter by has phone numbers
+        if filters.get('has_phone', False):
+            if not contact.get('phoneNumbers') or len(contact['phoneNumbers']) == 0:
+                include_contact = False
+        
+        # Filter by has postal addresses
+        if filters.get('has_address', False):
+            if not contact.get('postalAddresses') or len(contact['postalAddresses']) == 0:
+                include_contact = False
+        
+        # Filter by has profile image
+        if filters.get('has_image', False):
+            if not contact.get('hasImage', False):
+                include_contact = False
+        
+        # Filter by name (partial match)
+        if filters.get('name_contains'):
+            name_query = filters['name_contains'].lower()
+            full_name = f"{contact.get('firstName', '')} {contact.get('lastName', '')}".lower()
+            nickname = contact.get('nickname', '').lower()
+            
+            if name_query not in full_name and name_query not in nickname:
+                include_contact = False
+        
+        # Filter by organization
+        if filters.get('organization_contains'):
+            org_query = filters['organization_contains'].lower()
+            organization = contact.get('organizationName', '').lower()
+            
+            if org_query not in organization:
+                include_contact = False
+        
+        if include_contact:
+            filtered_contacts.append(contact)
+    
+    return filtered_contacts
+
 # Initialize the context manager
 context_manager = ChatContextManager(
     max_context_length=10,
@@ -314,77 +565,144 @@ def test_gemini_connection():
 
 
 # Music-related keyword detection
-def is_music_related_request(text):
+def ai_route_request(text):
     """
-    Detect if the user's request is music-related
+    Use AI to intelligently route user requests to the most appropriate endpoint.
+    Returns a dictionary with routing information.
+    """
+    if not text or not genai:
+        return {'route': 'gemini', 'confidence': 0.0, 'reasoning': 'No text or Gemini unavailable'}
+    
+    try:
+        # Get system information for context
+        system_info = get_system_info()
+        
+        # Build available services context
+        services_context = ""
+        if system_info:
+            services_context = "Available services:\n"
+            for service_id, service in system_info['available_integrations'].items():
+                auth_status = system_info['current_authentications'].get(service_id, {})
+                status = "✅ Available" if auth_status.get('authenticated', False) else "❌ Unavailable"
+                services_context += f"- {service['name']} ({service_id}): {status}\n"
+                services_context += f"  Capabilities: {', '.join(service['capabilities'])}\n"
+        
+        # Create the routing prompt
+        routing_prompt = f"""
+You are an intelligent request router for an AI assistant named Iris. Analyze the user's request and determine the most appropriate service to handle it.
+
+{services_context}
+
+User Request: "{text}"
+
+Available routing options:
+1. "spotify" - For music-related requests (play songs, create playlists, search music, recommendations)
+2. "contacts" - For contact lookup, finding phone numbers, email addresses, contact information
+3. "gmail" - For composing, sending, or managing emails
+4. "gemini" - For general conversation, questions, or requests that don't fit other services
+
+Consider the primary intent of the request. If a request could fit multiple services, choose the most specific one.
+
+Examples:
+- "Play some music" → spotify
+- "Find John's phone number" → contacts  
+- "Send an email to Sarah" → gmail
+- "What's the weather like?" → gemini
+- "Find Philip's email address" → contacts (contact lookup, not email composition)
+
+Respond with ONLY a JSON object in this exact format:
+{{
+    "route": "service_name",
+    "confidence": 0.95,
+    "reasoning": "Brief explanation of why this service was chosen"
+}}
+"""
+
+        # Get AI routing decision
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        response = model.generate_content(routing_prompt)
+        
+        # Parse the JSON response
+        try:
+            routing_data = json.loads(response.text.strip())
+            logger.info(f"AI routing decision: {routing_data}")
+            return routing_data
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse AI routing response: {e}")
+            # Fallback to keyword-based detection
+            return fallback_route_request(text)
+            
+    except Exception as e:
+        logger.error(f"AI routing failed: {e}")
+        # Fallback to keyword-based detection
+        return fallback_route_request(text)
+
+def fallback_route_request(text):
+    """
+    Fallback routing using keyword detection when AI routing fails
     """
     if not text:
-        return False
+        return {'route': 'gemini', 'confidence': 0.0, 'reasoning': 'No text provided'}
     
-    # Convert to lowercase for case-insensitive matching
     text_lower = text.lower()
     
-    # Music-related keywords
+    # Music keywords
     music_keywords = [
         'music', 'song', 'songs', 'play', 'playing', 'playlist', 'artist', 'album',
-        'spotify', 'search for', 'find', 'listen', 'hear', 'track', 'tracks',
-        'play music', 'play song', 'play songs', 'search music', 'search songs',
-        'what song', 'what music', 'recommend', 'suggest', 'genre', 'band',
-        'singer', 'musician', 'concert', 'lyrics', 'beat', 'rhythm', 'melody',
-        'drake', 'taylor swift', 'beyonce', 'ed sheeran', 'justin bieber',
-        'ariana grande', 'billie eilish', 'the weeknd', 'post malone',
-        'kanye west', 'rihanna', 'adele', 'bruno mars', 'shawn mendes'
+        'spotify', 'listen', 'hear', 'track', 'tracks', 'recommend', 'suggest', 
+        'genre', 'band', 'singer', 'musician', 'concert', 'lyrics'
     ]
     
-    # Check if any music keyword is present
+    # Contact keywords (prioritize over email for lookups)
+    contact_keywords = [
+        'contact', 'contacts', 'phone number', 'phone', 'call', 'calling',
+        'find', 'lookup', 'search for', 'who is', 'what is', 'where is', 
+        'how to contact', 'get in touch', 'reach', 'contact info', 
+        'contact information', 'details', 'address', 'location', 
+        'business card', 'directory', 'email of', 'email for'
+    ]
+    
+    # Email keywords (for composition, not lookup)
+    email_keywords = [
+        'send email', 'compose email', 'write email', 'mail', 'send mail',
+        'compose mail', 'write mail', 'message', 'send message',
+        'email to', 'mail to', 'send to', 'compose to', 'write to',
+        'draft', 'compose', 'reply', 'forward', 'inbox', 'outbox'
+    ]
+    
+    # Check for music
     for keyword in music_keywords:
         if keyword in text_lower:
-            return True
+            return {'route': 'spotify', 'confidence': 0.8, 'reasoning': f'Contains music keyword: {keyword}'}
     
-    return False
-
-# Email-related keyword detection
-def is_email_related_request(text):
-    """
-    Detect if the user's request is email-related
-    """
-    if not text:
-        return False
+    # Check for contact lookup (prioritize over email)
+    for keyword in contact_keywords:
+        if keyword in text_lower:
+            return {'route': 'contacts', 'confidence': 0.8, 'reasoning': f'Contains contact keyword: {keyword}'}
     
-    # Convert to lowercase for case-insensitive matching
-    text_lower = text.lower()
-    
-    # Status/connection queries should be handled by Gemini, not Gmail agent
-    status_queries = [
-        'are you connected', 'is gmail connected', 'gmail status', 'gmail connection',
-        'connected to gmail', 'gmail working', 'gmail available', 'gmail ready',
-        'check gmail', 'gmail authentication', 'gmail auth', 'gmail setup'
-    ]
-    
-    # Check if this is a status query
-    for status_query in status_queries:
-        if status_query in text_lower:
-            return False  # Let Gemini handle status queries
-    
-    # Email-related keywords
-    email_keywords = [
-        'email', 'send email', 'compose email', 'write email', 'mail',
-        'send mail', 'compose mail', 'write mail', 'message', 'send message',
-        'email to', 'mail to', 'send to', 'compose to', 'write to',
-        'draft', 'compose', 'reply', 'forward', 'inbox', 'outbox',
-        'gmail', 'outlook', 'yahoo mail', 'email address', 'recipient',
-        'subject', 'body', 'attachment', 'cc', 'bcc', 'reply to',
-        'email someone', 'mail someone', 'send someone', 'contact',
-        'notify', 'notification', 'reminder email', 'follow up',
-        'thank you email', 'meeting email', 'invitation', 'invite'
-    ]
-    
-    # Check if any email keyword is present
+    # Check for email composition
     for keyword in email_keywords:
         if keyword in text_lower:
-            return True
+            return {'route': 'gmail', 'confidence': 0.8, 'reasoning': f'Contains email keyword: {keyword}'}
     
-    return False
+    # Default to Gemini
+    return {'route': 'gemini', 'confidence': 0.5, 'reasoning': 'No specific service keywords detected'}
+
+# Legacy functions kept for backward compatibility
+def is_music_related_request(text):
+    """Legacy function - use ai_route_request instead"""
+    routing = ai_route_request(text)
+    return routing['route'] == 'spotify'
+
+def is_email_related_request(text):
+    """Legacy function - use ai_route_request instead"""
+    routing = ai_route_request(text)
+    return routing['route'] == 'gmail'
+
+def is_contact_related_request(text):
+    """Legacy function - use ai_route_request instead"""
+    routing = ai_route_request(text)
+    return routing['route'] == 'contacts'
 
 # Call Spotify agent endpoint
 def call_spotify_agent(user_request):
@@ -781,6 +1099,164 @@ Please provide a natural, helpful response to the user."""
         logger.error(f"Error processing email request: {str(e)}")
         return "I'm having trouble processing your email request. Please make sure the Gmail agent is running and properly configured."
 
+# Process contact request through contacts API and Gemini
+def process_contact_request(voice_input):
+    """
+    Process contact-related requests through contacts API and then through Gemini
+    """
+    try:
+        logger.info(f"Processing contact request: {voice_input}")
+        
+        if not CONTACTS_AVAILABLE:
+            return "I don't have access to your contacts. This feature requires macOS and proper permissions to access your Contacts app."
+        
+        # Extract potential names from the voice input
+        import re
+        
+        # Common patterns for names and relationships
+        name_patterns = [
+            r"(\b[A-Z][a-z]+\b)",  # Capitalized words (potential names)
+            r"my (\w+)",  # "my boss", "my mom", etc.
+            r"(\w+)'s",  # "John's", "Sarah's", etc.
+        ]
+        
+        potential_names = []
+        for pattern in name_patterns:
+            matches = re.findall(pattern, voice_input)
+            potential_names.extend(matches)
+        
+        # Remove common words that aren't names
+        common_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'my', 'me', 'i', 'you', 'he', 'she', 'it', 'we', 'they'}
+        potential_names = [name for name in potential_names if name.lower() not in common_words and len(name) > 2]
+        
+        # Search for contacts if we found potential names
+        contact_results = []
+        if potential_names:
+            for name in potential_names[:3]:  # Limit to first 3 potential names
+                try:
+                    # Search contacts for this name
+                    response = requests.post('http://127.0.0.1:5001/api/contacts/search', 
+                                           json={'query': name, 'limit': 3}, timeout=5)
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get('success') and result.get('contacts'):
+                            contact_results.extend(result['contacts'])
+                except Exception as e:
+                    logger.warning(f"Error searching contacts for '{name}': {e}")
+        
+        # Process contact results through Gemini for user-friendly output
+        if genai and os.getenv('GEMINI_API_KEY'):
+            try:
+                # Get system information for context
+                system_info = get_system_info()
+                
+                # Build system context for contact processing
+                system_context = ""
+                if system_info:
+                    contacts_auth = system_info['current_authentications'].get('contacts', {})
+                    contacts_integration = system_info['available_integrations'].get('contacts', {})
+                    
+                    system_context = f"""
+
+## SYSTEM INFORMATION
+You are Iris, an AI assistant with access to Contacts integration:
+
+### Contacts Integration Status:
+- **Status**: {'✅ Connected' if contacts_auth.get('authenticated', False) else '❌ Not connected'}
+- **Capabilities**: {', '.join(contacts_integration.get('capabilities', []))}
+"""
+                    if contacts_auth.get('authenticated') and 'contact_count' in contacts_auth:
+                        system_context += f"- **Available contacts**: {contacts_auth['contact_count']}\n"
+                
+                # Get conversation context for contact processing
+                conversation_context = context_manager.get_context_for_prompt(voice_input, include_recent=3)
+                
+                # Create a prompt to make the contact response more user-friendly
+                contact_processing_prompt = f"""You are Iris, a helpful AI assistant. The user made a contact-related request, and here's what I found in their contacts:
+
+{system_context}
+
+{conversation_context}
+
+User's request: {voice_input}
+Contact search results: {contact_results}
+
+Please provide a friendly, conversational response to the user about what was found. Make it sound natural and helpful, as if you're personally helping them with their contact request. Keep it concise but informative.
+
+**CONTEXT AWARENESS**: Use the conversation context above to provide more personalized contact assistance. Reference previous contact requests or people the user has mentioned.
+
+**CONTACT RESPONSE GUIDELINES**:
+- If contacts were found, list them clearly with their information
+- If no contacts were found, suggest alternative ways to help
+- If the user is looking for someone specific, help them refine their search
+- Be helpful and offer to search for more specific information if needed
+- If they're looking for contact information for email or calling, provide the relevant details
+
+FORMATTING GUIDELINES:
+- Use markdown formatting when appropriate to make your responses more readable
+- Use **bold** for contact names and important information
+- Use bullet points (-) when listing multiple contacts
+- Use `code formatting` for phone numbers and email addresses
+- Be warm and helpful in your tone
+
+Respond as Iris:"""
+
+                # Configure generation settings for contact processing
+                generation_config = genai.types.GenerationConfig(
+                    temperature=0.7,
+                    top_p=0.8,
+                    top_k=40,
+                    max_output_tokens=500,
+                )
+                
+                # Safety settings
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                ]
+                
+                model = genai.GenerativeModel('gemini-2.5-flash')
+
+                logger.info("Processing contact results through Gemini...")
+
+                response = model.generate_content(
+                    contact_processing_prompt,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                    request_options={'timeout': 15}
+                )
+
+                if response and hasattr(response, 'text') and response.text:
+                    processed_response = response.text.strip()
+                    logger.info(f"Gemini processed contact response: {processed_response}")
+                    
+                    # Add contact interaction to context
+                    context_manager.add_interaction(voice_input, processed_response, "contacts")
+                    
+                    return processed_response
+                else:
+                    logger.warning("Gemini returned empty response for contact request")
+                    fallback_response = f"I found some contacts for you: {contact_results}"
+                    
+                    # Add fallback interaction to context
+                    context_manager.add_interaction(voice_input, fallback_response, "contacts")
+                    
+                    return fallback_response
+                    
+            except Exception as gemini_error:
+                logger.warning(f"Gemini processing failed for contact request: {gemini_error}")
+                return f"I found some contacts for you: {contact_results}"
+        else:
+            # Fallback if Gemini is not available
+            logger.warning("Gemini not available, returning raw contact response")
+            return f"I found some contacts for you: {contact_results}"
+            
+    except Exception as e:
+        logger.error(f"Error processing contact request: {str(e)}")
+        return "I'm having trouble processing your contact request. Please make sure contacts access is properly configured."
+
 # Get system information for Gemini
 def get_system_info():
     """
@@ -801,23 +1277,32 @@ def get_system_info():
 # Get direct response from Gemini API
 def get_gemini_direct_response(voice_input):
     """
-    Use Gemini API to provide a direct response to user's voice input
+    Use AI routing to intelligently determine the best service for user's voice input
     """
     if not voice_input:
         logger.warning("No voice input provided")
         return "I'm sorry, I couldn't process your request."
     
-    # Check if this is a music-related request
-    if is_music_related_request(voice_input):
-        logger.info("Music-related request detected, routing to Spotify agent")
-        return process_music_request(voice_input)
+    # Use AI-powered routing to determine the best service
+    routing = ai_route_request(voice_input)
+    route = routing.get('route', 'gemini')
+    confidence = routing.get('confidence', 0.0)
+    reasoning = routing.get('reasoning', 'No reasoning provided')
     
-    # Check if this is an email-related request
-    if is_email_related_request(voice_input):
-        logger.info("Email-related request detected, routing to Gmail agent")
+    logger.info(f"AI routing decision: {route} (confidence: {confidence:.2f}) - {reasoning}")
+    
+    # Route to appropriate service based on AI decision
+    if route == 'spotify':
+        logger.info("Routing to Spotify agent")
+        return process_music_request(voice_input)
+    elif route == 'contacts':
+        logger.info("Routing to contacts processing")
+        return process_contact_request(voice_input)
+    elif route == 'gmail':
+        logger.info("Routing to Gmail agent")
         return process_email_request(voice_input)
     
-    # If not music or email-related, use Gemini for general responses
+    # If not music, email, or contact-related, use Gemini for general responses
     if not genai:
         logger.warning("Gemini not available for non-music requests")
         return "I heard you, but I need my AI service to be configured to help with that."
@@ -886,6 +1371,11 @@ You are Iris, an AI assistant with access to the following integrations and capa
 7. **CONTEXT AWARENESS**: Use the conversation context above to provide more personalized and relevant responses. Reference previous topics, user preferences, and maintain conversation continuity.
 8. **IMPORTANT**: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
 9. **INTEGRATION GUIDANCE**: If the user asks about capabilities or what you can do, reference the available integrations above. If they want to use a specific integration that's not connected, guide them to the "Integrate with apps" button.
+10. **CONTACTS INTEGRATION**: If the user mentions names of people (like "John", "Sarah", "my boss", "mom", etc.) in the context of emails, calls, or contact information, you can help them by:
+    - Searching their contacts to find the person's email address or phone number
+    - Suggesting using the contacts feature to resolve names to contact information
+    - Helping them find contact details for people they mention
+    - If they say something like "send email to John" but don't know John's email, you can suggest using the contacts lookup feature
 
 ## FORMATTING GUIDELINES:
 - Use markdown formatting when appropriate to make your responses more readable
@@ -1642,6 +2132,21 @@ def system_info():
                     'endpoint': 'http://localhost:8000/chat',
                     'status': 'available'
                 },
+                'contacts': {
+                    'name': 'Contacts',
+                    'description': 'MacBook contacts database for contact lookup, email resolution, and contact management',
+                    'icon': '👥',
+                    'capabilities': [
+                        'Search contacts by name, email, or phone',
+                        'Resolve names to email addresses',
+                        'Find contact information and details',
+                        'Filter contacts by criteria (has email, phone, etc.)',
+                        'Get contact statistics and insights',
+                        'Validate contact existence before actions'
+                    ],
+                    'endpoint': 'http://localhost:5001/api/contacts',
+                    'status': 'available' if CONTACTS_AVAILABLE else 'unavailable'
+                },
                 'google_calendar': {
                     'name': 'Google Calendar',
                     'description': 'Calendar service for scheduling meetings and managing events',
@@ -1716,6 +2221,17 @@ def system_info():
         except Exception as e:
             logger.warning(f"Could not check Gmail auth status: {e}")
             system_info['current_authentications']['gmail'] = {
+                'authenticated': False,
+                'error': str(e)
+            }
+        
+        # Check Contacts authentication status
+        try:
+            contacts_status = check_contacts_auth_status()
+            system_info['current_authentications']['contacts'] = contacts_status
+        except Exception as e:
+            logger.warning(f"Could not check Contacts auth status: {e}")
+            system_info['current_authentications']['contacts'] = {
                 'authenticated': False,
                 'error': str(e)
             }
@@ -1851,6 +2367,68 @@ def check_gmail_auth_status():
         return {
             'authenticated': False,
             'error': f'Status check failed: {str(e)}'
+        }
+
+def check_contacts_auth_status():
+    """Check Contacts framework authentication status"""
+    try:
+        if not CONTACTS_AVAILABLE:
+            return {
+                'authenticated': False,
+                'status': 'framework_unavailable',
+                'error': 'Contacts framework not available. Requires macOS and PyObjC.'
+            }
+        
+        # Test contacts access by trying to get authorization status
+        try:
+            auth_status = Contacts.CNContactStore.authorizationStatusForEntityType_(Contacts.CNEntityTypeContacts)
+            
+            if auth_status == Contacts.CNAuthorizationStatusAuthorized:
+                # Test actual contact access
+                test_contacts = get_all_contacts_from_mac()
+                if test_contacts:
+                    return {
+                        'authenticated': True,
+                        'status': 'active',
+                        'contact_count': len(test_contacts),
+                        'message': f'Access to {len(test_contacts)} contacts granted'
+                    }
+                else:
+                    return {
+                        'authenticated': False,
+                        'status': 'no_contacts',
+                        'error': 'Contacts access granted but no contacts found'
+                    }
+            elif auth_status == Contacts.CNAuthorizationStatusDenied:
+                return {
+                    'authenticated': False,
+                    'status': 'denied',
+                    'error': 'Contacts access denied. Please enable in System Preferences > Security & Privacy > Privacy > Contacts'
+                }
+            elif auth_status == Contacts.CNAuthorizationStatusRestricted:
+                return {
+                    'authenticated': False,
+                    'status': 'restricted',
+                    'error': 'Contacts access restricted (e.g., by parental controls)'
+                }
+            else:
+                return {
+                    'authenticated': False,
+                    'status': 'not_determined',
+                    'error': 'Contacts access not yet requested'
+                }
+                
+        except Exception as e:
+            return {
+                'authenticated': False,
+                'status': 'access_error',
+                'error': f'Error checking contacts access: {str(e)}'
+            }
+            
+    except Exception as e:
+        return {
+            'authenticated': False,
+            'error': f'Contacts status check failed: {str(e)}'
         }
 
 @app.route('/api/spotify/callback')
@@ -2060,6 +2638,251 @@ def manage_user_preferences():
         return jsonify({
             'success': False,
             'error': f'Failed to manage preferences: {str(e)}'
+        }), 500
+
+@app.route('/api/contacts', methods=['GET'])
+def get_contacts():
+    """Get all contacts with optional filtering"""
+    try:
+        if not CONTACTS_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Contacts framework not available. This feature requires macOS and PyObjC.'
+            }), 503
+        
+        # Get query parameters for filtering
+        filters = {}
+        
+        # Boolean filters
+        if request.args.get('has_email', '').lower() in ['true', '1', 'yes']:
+            filters['has_email'] = True
+        if request.args.get('has_phone', '').lower() in ['true', '1', 'yes']:
+            filters['has_phone'] = True
+        if request.args.get('has_address', '').lower() in ['true', '1', 'yes']:
+            filters['has_address'] = True
+        if request.args.get('has_image', '').lower() in ['true', '1', 'yes']:
+            filters['has_image'] = True
+        
+        # String filters
+        if request.args.get('name_contains'):
+            filters['name_contains'] = request.args.get('name_contains')
+        if request.args.get('organization_contains'):
+            filters['organization_contains'] = request.args.get('organization_contains')
+        
+        # Get limit and offset for pagination
+        limit = int(request.args.get('limit', 100))  # Default to 100 contacts
+        offset = int(request.args.get('offset', 0))  # Default to start from beginning
+        
+        logger.info(f"Fetching contacts with filters: {filters}, limit: {limit}, offset: {offset}")
+        
+        # Get all contacts from MacBook
+        raw_contacts = get_all_contacts_from_mac()
+        
+        if not raw_contacts:
+            return jsonify({
+                'success': True,
+                'contacts': [],
+                'total_count': 0,
+                'filtered_count': 0,
+                'filters_applied': filters,
+                'message': 'No contacts found or contacts access denied'
+            })
+        
+        # Format contacts for API response
+        formatted_contacts = []
+        for contact in raw_contacts:
+            formatted_contact = format_contact_for_api(contact)
+            if formatted_contact:
+                formatted_contacts.append(formatted_contact)
+        
+        # Apply filters
+        filtered_contacts = filter_contacts(formatted_contacts, filters)
+        
+        # Apply pagination
+        total_count = len(formatted_contacts)
+        filtered_count = len(filtered_contacts)
+        paginated_contacts = filtered_contacts[offset:offset + limit]
+        
+        # Generate summary statistics
+        stats = {
+            'total_contacts': total_count,
+            'filtered_contacts': filtered_count,
+            'returned_contacts': len(paginated_contacts),
+            'contacts_with_email': len([c for c in formatted_contacts if c.get('emailAddresses')]),
+            'contacts_with_phone': len([c for c in formatted_contacts if c.get('phoneNumbers')]),
+            'contacts_with_address': len([c for c in formatted_contacts if c.get('postalAddresses')]),
+            'contacts_with_image': len([c for c in formatted_contacts if c.get('hasImage', False)])
+        }
+        
+        logger.info(f"Returning {len(paginated_contacts)} contacts (filtered from {total_count} total)")
+        
+        return jsonify({
+            'success': True,
+            'contacts': paginated_contacts,
+            'pagination': {
+                'limit': limit,
+                'offset': offset,
+                'total_count': total_count,
+                'filtered_count': filtered_count,
+                'has_more': offset + limit < filtered_count
+            },
+            'filters_applied': filters,
+            'statistics': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching contacts: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to fetch contacts: {str(e)}'
+        }), 500
+
+@app.route('/api/contacts/search', methods=['POST'])
+def search_contacts():
+    """Search contacts with advanced filtering options"""
+    try:
+        if not CONTACTS_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Contacts framework not available. This feature requires macOS and PyObjC.'
+            }), 503
+        
+        data = request.get_json() or {}
+        search_query = data.get('query', '').strip()
+        filters = data.get('filters', {})
+        limit = data.get('limit', 50)
+        offset = data.get('offset', 0)
+        
+        logger.info(f"Searching contacts with query: '{search_query}', filters: {filters}")
+        
+        # Get all contacts
+        raw_contacts = get_all_contacts_from_mac()
+        
+        if not raw_contacts:
+            return jsonify({
+                'success': True,
+                'contacts': [],
+                'total_count': 0,
+                'search_query': search_query,
+                'message': 'No contacts found or contacts access denied'
+            })
+        
+        # Format contacts
+        formatted_contacts = []
+        for contact in raw_contacts:
+            formatted_contact = format_contact_for_api(contact)
+            if formatted_contact:
+                formatted_contacts.append(formatted_contact)
+        
+        # Apply search query if provided
+        if search_query:
+            search_results = []
+            query_lower = search_query.lower()
+            
+            for contact in formatted_contacts:
+                # Search in name fields
+                full_name = f"{contact.get('firstName', '')} {contact.get('lastName', '')}".lower()
+                nickname = contact.get('nickname', '').lower()
+                organization = contact.get('organizationName', '').lower()
+                job_title = contact.get('jobTitle', '').lower()
+                
+                # Search in email addresses
+                emails = [email.get('value', '').lower() for email in contact.get('emailAddresses', [])]
+                
+                # Search in phone numbers
+                phones = [phone.get('value', '').lower() for phone in contact.get('phoneNumbers', [])]
+                
+                # Check if query matches any field
+                if (query_lower in full_name or 
+                    query_lower in nickname or 
+                    query_lower in organization or 
+                    query_lower in job_title or
+                    any(query_lower in email for email in emails) or
+                    any(query_lower in phone for phone in phones)):
+                    search_results.append(contact)
+            
+            formatted_contacts = search_results
+        
+        # Apply additional filters
+        filtered_contacts = filter_contacts(formatted_contacts, filters)
+        
+        # Apply pagination
+        total_count = len(formatted_contacts)
+        paginated_contacts = filtered_contacts[offset:offset + limit]
+        
+        return jsonify({
+            'success': True,
+            'contacts': paginated_contacts,
+            'search_query': search_query,
+            'pagination': {
+                'limit': limit,
+                'offset': offset,
+                'total_count': total_count,
+                'has_more': offset + limit < total_count
+            },
+            'filters_applied': filters
+        })
+        
+    except Exception as e:
+        logger.error(f"Error searching contacts: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to search contacts: {str(e)}'
+        }), 500
+
+@app.route('/api/contacts/stats')
+def get_contacts_stats():
+    """Get statistics about contacts"""
+    try:
+        if not CONTACTS_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'Contacts framework not available. This feature requires macOS and PyObjC.'
+            }), 503
+        
+        # Get all contacts
+        raw_contacts = get_all_contacts_from_mac()
+        
+        if not raw_contacts:
+            return jsonify({
+                'success': True,
+                'stats': {
+                    'total_contacts': 0,
+                    'contacts_with_email': 0,
+                    'contacts_with_phone': 0,
+                    'contacts_with_address': 0,
+                    'contacts_with_image': 0
+                },
+                'message': 'No contacts found or contacts access denied'
+            })
+        
+        # Format contacts and calculate stats
+        formatted_contacts = []
+        for contact in raw_contacts:
+            formatted_contact = format_contact_for_api(contact)
+            if formatted_contact:
+                formatted_contacts.append(formatted_contact)
+        
+        stats = {
+            'total_contacts': len(formatted_contacts),
+            'contacts_with_email': len([c for c in formatted_contacts if c.get('emailAddresses')]),
+            'contacts_with_phone': len([c for c in formatted_contacts if c.get('phoneNumbers')]),
+            'contacts_with_address': len([c for c in formatted_contacts if c.get('postalAddresses')]),
+            'contacts_with_image': len([c for c in formatted_contacts if c.get('hasImage', False)]),
+            'contacts_with_organization': len([c for c in formatted_contacts if c.get('organizationName')]),
+            'contacts_with_birthday': len([c for c in formatted_contacts if c.get('birthday')])
+        }
+        
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting contacts stats: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to get contacts stats: {str(e)}'
         }), 500
 
 if __name__ == '__main__':
