@@ -222,6 +222,15 @@ Please provide a friendly, conversational response to the user about what was fo
 
 IMPORTANT: If the music service response indicates any authentication, connection, or access issues, you MUST tell the user to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
 
+FORMATTING GUIDELINES:
+- Use markdown formatting when appropriate to make your responses more readable
+- Use **bold** for emphasis on important points like song titles or artist names
+- Use *italics* for subtle emphasis
+- Use bullet points (-) when listing multiple songs, albums, or artists
+- Use `code formatting` for technical terms or specific values
+- Use [links](url) when referencing external resources
+- Use > blockquotes for important notes or warnings
+
 Respond as Iris:"""
 
                 # Configure safety settings
@@ -302,7 +311,7 @@ def get_gemini_direct_response(voice_input):
     try:
         logger.info("Making Gemini API call for direct response...")
         
-        # Enhanced prompt for direct response with Spotify integration guidance
+        # Enhanced prompt for direct response with Spotify integration guidance and markdown support
         direct_response_prompt = f"""You are Iris, a helpful AI assistant. The user has spoken to you via voice input. Respond naturally and helpfully to what they've said.
 
 Guidelines:
@@ -313,6 +322,16 @@ Guidelines:
 5. If you're unsure what they want, ask for clarification
 6. Be helpful and proactive
 7. IMPORTANT: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
+
+FORMATTING GUIDELINES:
+- Use markdown formatting when appropriate to make your responses more readable
+- Use **bold** for emphasis on important points
+- Use *italics* for subtle emphasis
+- Use bullet points (-) or numbered lists (1.) when providing multiple items or steps
+- Use `code formatting` for technical terms, commands, or specific values
+- Use [links](url) when referencing external resources
+- Use > blockquotes for important notes or warnings
+- Use ## headings for organizing longer responses into sections
 
 User's voice input: {voice_input}
 

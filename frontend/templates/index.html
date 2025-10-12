@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Iris - Siri that actually does what you tell it to do:</title>
+    <!-- Markdown rendering library -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
@@ -388,6 +390,87 @@
         line-height: 1.6;
         margin: 0;
         min-height: 1.6em;
+      }
+
+      /* Markdown styling */
+      .ai-response-text h1,
+      .ai-response-text h2,
+      .ai-response-text h3,
+      .ai-response-text h4,
+      .ai-response-text h5,
+      .ai-response-text h6 {
+        color: #1d1d1f;
+        margin: 1em 0 0.5em 0;
+        font-weight: 600;
+      }
+
+      .ai-response-text h1 { font-size: 1.5em; }
+      .ai-response-text h2 { font-size: 1.3em; }
+      .ai-response-text h3 { font-size: 1.2em; }
+      .ai-response-text h4 { font-size: 1.1em; }
+
+      .ai-response-text ul,
+      .ai-response-text ol {
+        margin: 0.5em 0;
+        padding-left: 1.5em;
+      }
+
+      .ai-response-text li {
+        margin: 0.3em 0;
+      }
+
+      .ai-response-text p {
+        margin: 0.5em 0;
+      }
+
+      .ai-response-text a {
+        color: #007aff;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(0, 122, 255, 0.3);
+        transition: all 0.3s ease;
+      }
+
+      .ai-response-text a:hover {
+        color: #0056cc;
+        border-bottom-color: #0056cc;
+      }
+
+      .ai-response-text code {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 4px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 0.9em;
+      }
+
+      .ai-response-text pre {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 1em;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 1em 0;
+      }
+
+      .ai-response-text pre code {
+        background: none;
+        padding: 0;
+      }
+
+      .ai-response-text blockquote {
+        border-left: 4px solid #007aff;
+        margin: 1em 0;
+        padding-left: 1em;
+        color: #6e6e73;
+        font-style: italic;
+      }
+
+      .ai-response-text strong {
+        font-weight: 600;
+        color: #1d1d1f;
+      }
+
+      .ai-response-text em {
+        font-style: italic;
       }
 
       .typing-cursor {
@@ -794,31 +877,41 @@
         }
       }
 
-      // Typing Animation Function
+      // Typing Animation Function with Markdown Support
       function typeText(element, text, speed = 50) {
         return new Promise((resolve) => {
-          element.textContent = ''
-          const cursor = document.createElement('span')
-          cursor.className = 'typing-cursor'
-          element.appendChild(cursor)
+          // Check if text contains markdown
+          const hasMarkdown = /[#*`\[\]()_~>|]/.test(text)
+          
+          if (hasMarkdown) {
+            // For markdown content, render it directly without typing animation
+            element.innerHTML = marked.parse(text)
+            resolve()
+          } else {
+            // For plain text, use the original typing animation
+            element.textContent = ''
+            const cursor = document.createElement('span')
+            cursor.className = 'typing-cursor'
+            element.appendChild(cursor)
 
-          let i = 0
-          const words = text.split(' ')
+            let i = 0
+            const words = text.split(' ')
 
-          function typeWord() {
-            if (i < words.length) {
-              const currentText = words.slice(0, i + 1).join(' ')
-              element.textContent = currentText
-              element.appendChild(cursor)
-              i++
-              typingTimer = setTimeout(typeWord, speed + Math.random() * 30)
-            } else {
-              cursor.remove()
-              resolve()
+            function typeWord() {
+              if (i < words.length) {
+                const currentText = words.slice(0, i + 1).join(' ')
+                element.textContent = currentText
+                element.appendChild(cursor)
+                i++
+                typingTimer = setTimeout(typeWord, speed + Math.random() * 30)
+              } else {
+                cursor.remove()
+                resolve()
+              }
             }
-          }
 
-          typeWord()
+            typeWord()
+          }
         })
       }
 
@@ -1427,9 +1520,46 @@
         }
       }
 
+      // Test markdown rendering function (for development/testing)
+      function testMarkdownRendering() {
+        const testMarkdown = `# Test Markdown Rendering
+
+This is a **bold** statement and this is *italic* text.
+
+Here's a list of features:
+- **Bold text** for emphasis
+- *Italic text* for subtle emphasis
+- \`Code formatting\` for technical terms
+- [Links](https://example.com) for external resources
+
+> This is a blockquote for important notes
+
+## Code Example
+\`\`\`javascript
+function test() {
+  console.log("Hello, World!");
+}
+\`\`\`
+
+**Numbered steps:**
+1. First step
+2. Second step
+3. Third step
+
+That's it! The markdown should render properly.`
+
+        displayResponseWithTyping({
+          gemini_response: testMarkdown
+        })
+      }
+
+      // Make test function available globally for console testing
+      window.testMarkdownRendering = testMarkdownRendering
+
       // Initialize the app when DOM is loaded
       document.addEventListener('DOMContentLoaded', function () {
         console.log('Iris Voice Assistant loaded')
+        console.log('Test markdown rendering with: testMarkdownRendering()')
         setState('idle')
 
         // Handle Spotify authentication callback
