@@ -332,8 +332,8 @@
         display: none;
       }
 
-      /* AI Response Area */
-      .ai-response-container {
+      /* Transcript and AI Response Area */
+      .response-section {
         max-width: 800px;
         width: 90%;
         margin: 40px auto 0;
@@ -342,9 +342,61 @@
         transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
 
-      .ai-response-container.visible {
+      .response-section.visible {
         opacity: 1;
         transform: translateY(0);
+      }
+
+      /* User Transcript */
+      .user-transcript {
+        background: rgba(0, 122, 255, 0.1);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 5px 20px rgba(0, 122, 255, 0.1);
+        border: 1px solid rgba(0, 122, 255, 0.2);
+        text-align: left;
+        position: relative;
+      }
+
+      .user-transcript-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(0, 122, 255, 0.2);
+      }
+
+      .user-avatar {
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        background: linear-gradient(45deg, #007aff, #5856d6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+        font-size: 1em;
+      }
+
+      .user-name {
+        font-weight: 600;
+        color: #1d1d1f;
+        font-size: 1em;
+      }
+
+      .user-transcript-text {
+        color: #333;
+        font-size: 1em;
+        line-height: 1.5;
+        margin: 0;
+        font-style: italic;
+      }
+
+      /* AI Response Area */
+      .ai-response-container {
+        width: 100%;
       }
 
       .ai-response {
@@ -665,6 +717,11 @@
           font-size: 3em;
         }
 
+        .user-transcript {
+          padding: 15px;
+          margin: 0 10px 15px 10px;
+        }
+
         .ai-response {
           padding: 20px;
           margin: 0 10px;
@@ -751,25 +808,37 @@
         Click to start listening, click again to stop
       </p>
 
-      <!-- AI Response Container -->
-      <div class="ai-response-container" id="aiResponseContainer">
-        <div class="ai-response">
-          <div class="ai-response-header">
-            <div class="ai-avatar">🤖</div>
-            <div class="ai-name">Iris</div>
+      <!-- Response Section (Transcript + AI Response) -->
+      <div class="response-section" id="responseSection">
+        <!-- User Transcript -->
+        <div class="user-transcript" id="userTranscript" style="display: none">
+          <div class="user-transcript-header">
+            <div class="user-avatar">👤</div>
+            <div class="user-name">You said</div>
           </div>
-          <p class="ai-response-text" id="aiResponseText"></p>
-          <div
-            class="response-actions"
-            id="responseActions"
-            style="display: none"
-          >
-            <button class="action-btn secondary" onclick="clearResponse()">
-              Clear
-            </button>
-            <button class="action-btn" onclick="startNewCommand()">
-              Ask Again
-            </button>
+          <p class="user-transcript-text" id="userTranscriptText"></p>
+        </div>
+
+        <!-- AI Response Container -->
+        <div class="ai-response-container">
+          <div class="ai-response">
+            <div class="ai-response-header">
+              <div class="ai-avatar">🤖</div>
+              <div class="ai-name">Iris</div>
+            </div>
+            <p class="ai-response-text" id="aiResponseText"></p>
+            <div
+              class="response-actions"
+              id="responseActions"
+              style="display: none"
+            >
+              <button class="action-btn secondary" onclick="clearResponse()">
+                Clear
+              </button>
+              <button class="action-btn" onclick="startNewCommand()">
+                Ask Again
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -825,9 +894,8 @@
         const siriContainer = document.querySelector('.siri-container')
         const siriCircle = document.getElementById('siriCircle')
         const instructionText = document.getElementById('instructionText')
-        const aiResponseContainer = document.getElementById(
-          'aiResponseContainer'
-        )
+        const responseSection = document.getElementById('responseSection')
+        const userTranscript = document.getElementById('userTranscript')
 
         // Remove all state classes first
         mainContent.classList.remove('listening', 'responding')
@@ -836,7 +904,8 @@
         siriContainer.classList.remove('enlarged')
         siriCircle.classList.remove('listening', 'enlarged')
         instructionText.classList.remove('hidden')
-        aiResponseContainer.classList.remove('visible')
+        responseSection.classList.remove('visible')
+        userTranscript.style.display = 'none'
 
         switch (newState) {
           case 'idle':
@@ -872,7 +941,7 @@
             siriContainer.classList.add('enlarged')
             siriCircle.classList.add('enlarged')
             siriCircle.classList.remove('listening')
-            aiResponseContainer.classList.add('visible')
+            responseSection.classList.add('visible')
             break
         }
       }
@@ -1223,9 +1292,17 @@
 
         const aiResponseText = document.getElementById('aiResponseText')
         const responseActions = document.getElementById('responseActions')
-        const aiResponseContainer = document.getElementById(
-          'aiResponseContainer'
-        )
+        const responseSection = document.getElementById('responseSection')
+        const userTranscript = document.getElementById('userTranscript')
+        const userTranscriptText = document.getElementById('userTranscriptText')
+
+        // Show the transcript if we have voice input
+        if (results.voice_input) {
+          userTranscriptText.textContent = results.voice_input
+          userTranscript.style.display = 'block'
+        } else {
+          userTranscript.style.display = 'none'
+        }
 
         let responseText = ''
 
@@ -1253,7 +1330,7 @@
           responseText = "I'm not sure how to respond to that. Could you try again?"
         }
 
-        // Wait for the response container to become visible, then scroll to ensure it's in view
+        // Wait for the response section to become visible, then scroll to ensure it's in view
         setTimeout(() => {
           scrollToResponseArea()
         }, 400) // Wait for the state transition to start
@@ -1269,21 +1346,19 @@
 
       // Scroll to ensure the response area is fully visible
       function scrollToResponseArea() {
-        const aiResponseContainer = document.getElementById(
-          'aiResponseContainer'
-        )
-        if (!aiResponseContainer) return
+        const responseSection = document.getElementById('responseSection')
+        if (!responseSection) return
 
-        const containerRect = aiResponseContainer.getBoundingClientRect()
+        const containerRect = responseSection.getBoundingClientRect()
         const windowHeight = window.innerHeight
 
-        // Check if the response container is fully visible
+        // Check if the response section is fully visible
         const isFullyVisible =
           containerRect.top >= 0 && containerRect.bottom <= windowHeight
 
         if (!isFullyVisible) {
           // Calculate the ideal scroll position to center the response area in the lower part of the screen
-          const idealTop = windowHeight * 0.3 // Position response area at 30% from top of viewport
+          const idealTop = windowHeight * 0.2 // Position response area at 20% from top of viewport
           const currentTop = containerRect.top
           const scrollOffset = currentTop - idealTop
 
