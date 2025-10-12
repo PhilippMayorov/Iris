@@ -4,10 +4,10 @@ This document describes the ElevenLabs text-to-speech integration implemented in
 
 ## Features
 
-- **Voice Response**: Convert AI responses to natural-sounding speech
+- **Synchronized Response**: Text and audio appear together for seamless experience
+- **Pre-loaded Audio**: TTS audio is prepared before text is shown
 - **Multiple Voice Options**: Support for different ElevenLabs voices
-- **Audio Playback**: Play, pause, and stop TTS audio
-- **Real-time UI**: Visual feedback during audio generation and playback
+- **Background Processing**: TTS generation happens without blocking the UI
 
 ## Setup
 
@@ -63,25 +63,24 @@ Converts text to speech using ElevenLabs API.
 
 ### UI Components
 
-- **TTS Button**: Green "🔊 Play Response" button in the response actions
-- **Visual States**: 
-  - Disabled (gray) when no response text available
-  - Playing (red with pulse animation) during audio playback
-  - Normal (green) when ready to play
+- **Synchronized Display**: Text remains hidden until audio is ready, then both appear together
+- **Background Processing**: No UI elements needed - audio generation happens seamlessly
+- **Audio Management**: Automatic cleanup of audio resources
 
 ### JavaScript Functions
 
-- `playTTS()`: Converts current response text to speech and plays it
-- `stopTTS()`: Stops currently playing audio
-- `toggleTTS()`: Toggles between play and stop states
-- `resetTTSButton()`: Resets button to default state
+- `prepareTTSAudio()`: Converts text to speech and prepares audio for playback
+- `playPreparedAudio()`: Plays the pre-loaded audio
+- `playTTS()`: Legacy function that combines preparation and playback
+- `stopTTS()`: Stops currently playing audio and cleans up resources
+- **Synchronized Flow**: Audio preparation → Text typing + Audio playback simultaneously
 
 ## Usage
 
 1. **Get AI Response**: Use voice input to get a response from Iris
-2. **Play Audio**: Click the "🔊 Play Response" button to hear the response
-3. **Control Playback**: Click again to stop the audio
-4. **Clear/New Request**: Audio automatically stops when clearing or starting new requests
+2. **Synchronized Experience**: Text and audio appear together once audio is ready
+3. **Seamless Playback**: No user interaction needed - everything happens automatically
+4. **Auto-cleanup**: Audio automatically stops when clearing or starting new requests
 
 ## Testing
 
@@ -161,9 +160,10 @@ The implementation includes comprehensive error handling:
    - Try refreshing the page
    - Check browser console for JavaScript errors
 
-5. **Button not responding**
+5. **Text not appearing or audio not synchronized**
+   - Check browser audio permissions
    - Ensure response text is available
-   - Check that the typing animation has completed
+   - Check browser console for TTS preparation errors
    - Try clearing and getting a new response
 
 ### Debug Mode

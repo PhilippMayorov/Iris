@@ -571,41 +571,6 @@
         background: rgba(0, 0, 0, 0.1);
       }
 
-      /* TTS Button */
-      .tts-btn {
-        background: #34c759;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 8px 16px;
-        font-size: 0.9em;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .tts-btn:hover {
-        background: #30b04f;
-        transform: translateY(-1px);
-      }
-
-      .tts-btn:disabled {
-        background: #ccc;
-        cursor: not-allowed;
-        transform: none;
-      }
-
-      .tts-btn.playing {
-        background: #ff3b30;
-        animation: pulse 1s ease-in-out infinite;
-      }
-
-      .tts-btn.playing:hover {
-        background: #d70015;
-      }
 
       /* Integration Popup */
       .integration-popup {
@@ -868,9 +833,6 @@
               id="responseActions"
               style="display: none"
             >
-              <button class="tts-btn" id="ttsBtn" onclick="playTTS()" disabled>
-                🔊 Play Response
-              </button>
               <button class="action-btn secondary" onclick="clearResponse()">
                 Clear
               </button>
@@ -923,6 +885,7 @@
       let typingTimer = null
       let currentAudio = null
       let currentResponseText = ''
+      let preparedAudioUrl = null
 
       // State Management Functions
       function setState(newState) {
@@ -1376,20 +1339,35 @@
           scrollToResponseArea()
         }, 400) // Wait for the state transition to start
 
-        // Start typing animation
-        await typeText(aiResponseText, responseText, 80)
+        // Prepare TTS first, then show text and play audio together
+        if (responseText && responseText.trim()) {
+          currentResponseText = responseText
+          
+          // Generate TTS audio first
+          try {
+            console.log('Preparing TTS audio...')
+            await prepareTTSAudio()
+            
+            // Once audio is ready, start typing animation and play audio simultaneously
+            console.log('Audio ready, starting synchronized text and audio...')
+            await Promise.all([
+              typeText(aiResponseText, responseText, 80),
+              playPreparedAudio()
+            ])
+            
+          } catch (error) {
+            console.warn('TTS preparation failed, showing text without audio:', error)
+            // Fallback: show text without audio if TTS fails
+            await typeText(aiResponseText, responseText, 80)
+          }
+        } else {
+          // No text to convert, just show empty response
+          await typeText(aiResponseText, responseText, 80)
+        }
 
-        // Show action buttons after typing is complete
+        // Show action buttons after everything is complete
         setTimeout(() => {
           responseActions.style.display = 'flex'
-          // Enable TTS button if we have response text
-          const ttsBtn = document.getElementById('ttsBtn')
-          if (responseText && responseText.trim()) {
-            currentResponseText = responseText
-            ttsBtn.disabled = false
-          } else {
-            ttsBtn.disabled = true
-          }
         }, 500)
       }
 
@@ -1685,83 +1663,82 @@ That's it! The markdown should render properly.`
       window.testMarkdownRendering = testMarkdownRendering
 
       // TTS Functions
-      async function playTTS() {
-        const ttsBtn = document.getElementById('ttsBtn')
-        
+      async function prepareTTSAudio() {
         if (!currentResponseText || currentResponseText.trim() === '') {
-          console.warn('No response text available for TTS')
-          return
+          throw new Error('No response text available for TTS')
         }
 
-        try {
-          // Stop any currently playing audio
-          if (currentAudio) {
-            currentAudio.pause()
-            currentAudio = null
-          }
-
-          // Update button state
-          ttsBtn.disabled = true
-          ttsBtn.classList.add('playing')
-          ttsBtn.innerHTML = '⏸️ Stop'
-
-          console.log('Converting text to speech...')
-          
-          // Call the TTS API
-          const response = await fetch('/api/text-to-speech', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              text: currentResponseText,
-              voice_id: 'JBFqnCBsd6RMkjVDRZzb', // Default voice
-              model_id: 'eleven_multilingual_v2',
-              output_format: 'mp3_44100_128'
-            }),
-          })
-
-          const data = await response.json()
-
-          if (!data.success) {
-            throw new Error(data.error || 'TTS conversion failed')
-          }
-
-          // Create audio element and play
-          const audioBlob = new Blob([Uint8Array.from(atob(data.audio_data), c => c.charCodeAt(0))], {
-            type: 'audio/mpeg'
-          })
-          const audioUrl = URL.createObjectURL(audioBlob)
-          
-          currentAudio = new Audio(audioUrl)
-          
-          currentAudio.onended = () => {
-            resetTTSButton()
-            URL.revokeObjectURL(audioUrl)
-          }
-          
-          currentAudio.onerror = (error) => {
-            console.error('Audio playback error:', error)
-            resetTTSButton()
-            URL.revokeObjectURL(audioUrl)
-          }
-
-          await currentAudio.play()
-          console.log('TTS audio playing...')
-
-        } catch (error) {
-          console.error('TTS error:', error)
-          alert(`Text-to-speech failed: ${error.message}`)
-          resetTTSButton()
+        // Clean up any existing prepared audio
+        if (preparedAudioUrl) {
+          URL.revokeObjectURL(preparedAudioUrl)
+          preparedAudioUrl = null
         }
+
+        console.log('Converting text to speech...')
+        
+        // Call the TTS API
+        const response = await fetch('/api/text-to-speech', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: currentResponseText,
+            voice_id: 'JBFqnCBsd6RMkjVDRZzb', // Default voice
+            model_id: 'eleven_multilingual_v2',
+            output_format: 'mp3_44100_128'
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!data.success) {
+          throw new Error(data.error || 'TTS conversion failed')
+        }
+
+        // Create audio blob and URL for later playback
+        const audioBlob = new Blob([Uint8Array.from(atob(data.audio_data), c => c.charCodeAt(0))], {
+          type: 'audio/mpeg'
+        })
+        preparedAudioUrl = URL.createObjectURL(audioBlob)
+        
+        console.log('TTS audio prepared successfully')
       }
 
-      function resetTTSButton() {
-        const ttsBtn = document.getElementById('ttsBtn')
-        ttsBtn.disabled = false
-        ttsBtn.classList.remove('playing')
-        ttsBtn.innerHTML = '🔊 Play Response'
-        currentAudio = null
+      async function playPreparedAudio() {
+        if (!preparedAudioUrl) {
+          throw new Error('No prepared audio available')
+        }
+
+        // Stop any currently playing audio
+        if (currentAudio) {
+          currentAudio.pause()
+          currentAudio = null
+        }
+
+        // Create and play the prepared audio
+        currentAudio = new Audio(preparedAudioUrl)
+        
+        currentAudio.onended = () => {
+          URL.revokeObjectURL(preparedAudioUrl)
+          preparedAudioUrl = null
+          console.log('TTS audio playback completed')
+        }
+        
+        currentAudio.onerror = (error) => {
+          console.error('Audio playback error:', error)
+          URL.revokeObjectURL(preparedAudioUrl)
+          preparedAudioUrl = null
+        }
+
+        await currentAudio.play()
+        console.log('TTS audio playing automatically...')
+      }
+
+      // Legacy function for backward compatibility
+      async function playTTS() {
+        await prepareTTSAudio()
+        await playPreparedAudio()
       }
 
       function stopTTS() {
@@ -1769,27 +1746,12 @@ That's it! The markdown should render properly.`
           currentAudio.pause()
           currentAudio = null
         }
-        resetTTSButton()
-      }
-
-      // Update TTS button click handler to toggle play/stop
-      function toggleTTS() {
-        const ttsBtn = document.getElementById('ttsBtn')
-        
-        if (ttsBtn.classList.contains('playing')) {
-          stopTTS()
-        } else {
-          playTTS()
+        // Clean up prepared audio URL
+        if (preparedAudioUrl) {
+          URL.revokeObjectURL(preparedAudioUrl)
+          preparedAudioUrl = null
         }
       }
-
-      // Override the onclick handler
-      document.addEventListener('DOMContentLoaded', function() {
-        const ttsBtn = document.getElementById('ttsBtn')
-        if (ttsBtn) {
-          ttsBtn.onclick = toggleTTS
-        }
-      })
 
       // Initialize the app when DOM is loaded
       document.addEventListener('DOMContentLoaded', function () {
