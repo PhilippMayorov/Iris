@@ -1,0 +1,15 @@
+# Spotify Agent Dependencies
+# Core uAgents framework
+uagents>=0.1.0
+
+# For future Spotify Web API integration
+spotipy>=2.22.1
+
+# Standard dependencies
+pydantic>=2.0.0
+asyncio
+typing
+datetime
+json
+random
+uuid
