@@ -1,0 +1,31 @@
+# Discord Agent Dependencies
+# Core uAgents framework with chat protocol
+uagents>=0.1.0
+
+# Chat protocol is included in uagents_core
+# uagents_core (included with uagents)
+
+# Discord API integration
+discord.py>=2.3.0
+aiohttp>=3.8.0
+
+# OAuth2 and authentication
+requests>=2.31.0
+oauthlib>=3.2.0
+requests-oauthlib>=1.3.0
+
+# ASI:One API client
+openai>=1.0.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Standard dependencies
+pydantic>=2.0.0
+
+# Additional utilities
+cryptography>=41.0.0  # For secure token storage
+aiofiles>=23.0.0      # For async file operations
+
+# Python built-ins (no installation needed)
+# asyncio, typing, datetime, json, random, uuid, re
