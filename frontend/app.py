@@ -444,6 +444,79 @@ def spotify_auth():
             'error': f'Spotify authentication failed: {str(e)}'
         }), 500
 
+@app.route('/api/spotify/status')
+def spotify_status():
+    """Check Spotify authentication status"""
+    try:
+        # Import spotipy here to avoid issues if not installed
+        import spotipy
+        from spotipy.oauth2 import SpotifyOAuth
+        
+        # Get Spotify credentials from environment
+        client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        redirect_uri = 'http://127.0.0.1:5001/api/spotify/callback'
+        scope = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
+        
+        if not all([client_id, client_secret]):
+            return jsonify({
+                'authenticated': False,
+                'error': 'Spotify credentials not configured'
+            }), 400
+        
+        # Create auth manager
+        auth_manager = SpotifyOAuth(
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            scope=scope,
+            cache_path=".spotify_cache"
+        )
+        
+        # Check if we have cached credentials
+        token_info = auth_manager.cache_handler.get_cached_token()
+        
+        if not token_info:
+            return jsonify({
+                'authenticated': False,
+                'message': 'No cached credentials found'
+            })
+        
+        # Test the connection by getting current user
+        try:
+            spotify = spotipy.Spotify(auth_manager=auth_manager)
+            user_info = spotify.current_user()
+            
+            return jsonify({
+                'authenticated': True,
+                'user': {
+                    'display_name': user_info['display_name'],
+                    'email': user_info.get('email', 'N/A'),
+                    'followers': user_info['followers']['total']
+                },
+                'message': f'Connected as {user_info["display_name"]}'
+            })
+            
+        except Exception as e:
+            logger.error(f"Spotify API test failed: {str(e)}")
+            return jsonify({
+                'authenticated': False,
+                'error': 'Token expired or invalid',
+                'message': 'Please re-authenticate'
+            })
+        
+    except ImportError:
+        return jsonify({
+            'authenticated': False,
+            'error': 'Spotify library not installed'
+        }), 500
+    except Exception as e:
+        logger.error(f"Spotify status check error: {str(e)}")
+        return jsonify({
+            'authenticated': False,
+            'error': f'Status check failed: {str(e)}'
+        }), 500
+
 @app.route('/api/spotify/callback')
 def spotify_callback():
     """Handle Spotify OAuth callback"""

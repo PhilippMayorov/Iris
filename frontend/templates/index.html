@@ -492,6 +492,27 @@
         transform: translateY(-2px);
       }
 
+      .integration-item.authenticated {
+        background: #e8f5e8;
+        border-color: #4caf50;
+        position: relative;
+      }
+
+      .integration-item.authenticated::after {
+        content: '✓';
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        color: #4caf50;
+        font-weight: bold;
+        font-size: 1.2em;
+      }
+
+      .integration-item.authenticated:hover {
+        background: #d4edda;
+        border-color: #45a049;
+      }
+
       .integration-icon {
         font-size: 1.5em;
         margin-right: 15px;
@@ -1048,14 +1069,47 @@
       }
 
       // Integration popup functions
-      function openIntegrationPopup() {
+      async function openIntegrationPopup() {
         const popup = document.getElementById('integrationPopup')
         popup.style.display = 'flex'
+        
+        // Check authentication status when opening popup
+        await checkAuthenticationStatus()
       }
 
       function closeIntegrationPopup() {
         const popup = document.getElementById('integrationPopup')
         popup.style.display = 'none'
+      }
+
+      // Check authentication status for all apps
+      async function checkAuthenticationStatus() {
+        try {
+          // Check Spotify authentication
+          const spotifyResponse = await fetch('/api/spotify/status')
+          const spotifyData = await spotifyResponse.json()
+          
+          const spotifyItem = document.querySelector('.integration-item[onclick*="Spotify"]')
+          if (spotifyItem) {
+            if (spotifyData.authenticated) {
+              spotifyItem.classList.add('authenticated')
+              console.log(`✅ Spotify authenticated as: ${spotifyData.user?.display_name || 'Unknown'}`)
+            } else {
+              spotifyItem.classList.remove('authenticated')
+              console.log(`❌ Spotify not authenticated: ${spotifyData.message || spotifyData.error}`)
+            }
+          }
+          
+          // TODO: Add other app authentication checks here
+          // For now, other apps are not authenticated
+          const otherItems = document.querySelectorAll('.integration-item:not([onclick*="Spotify"])')
+          otherItems.forEach(item => {
+            item.classList.remove('authenticated')
+          })
+          
+        } catch (error) {
+          console.error('Error checking authentication status:', error)
+        }
       }
 
       // Handle integration clicks
@@ -1217,6 +1271,9 @@
             alert('🎉 Spotify integration successful! You can now use voice commands to control your music.')
           }, 500)
           
+          // Refresh authentication status
+          checkAuthenticationStatus()
+          
           // Clean up URL
           window.history.replaceState({}, document.title, window.location.pathname)
         } else if (spotifyAuth === 'error') {
@@ -1241,6 +1298,9 @@
 
         // Set up button hover feedback
         setupButtonHoverFeedback()
+
+        // Check authentication status on page load
+        checkAuthenticationStatus()
 
         // Initialize speech recognition
         if (!initializeSpeechRecognition()) {
