@@ -869,6 +869,37 @@ def spotify_callback():
             
             logger.info(f"Spotify authentication successful for user: {user_info['display_name']}")
             
+            # Trigger the setup script to ensure proper configuration
+            try:
+                # Import the setup function from the Spotify agent
+                import sys
+                
+                # Add the Spotify agent directory to the path
+                spotify_agent_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'agents', 'new-agents', 'spotifyAgent')
+                if spotify_agent_path not in sys.path:
+                    sys.path.append(spotify_agent_path)
+                
+                from setup_spotify_auth import setup_spotify_auth_with_params
+                
+                # Call the setup function with the authentication parameters
+                # Use the frontend cache file as source, setup script will copy to agent directory
+                setup_result = setup_spotify_auth_with_params(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    redirect_uri=redirect_uri,
+                    auth_code=code,
+                    cache_path=".spotify_cache"  # This is the frontend cache file
+                )
+                
+                if setup_result['success']:
+                    logger.info(f"Spotify setup script completed successfully: {setup_result['message']}")
+                else:
+                    logger.warning(f"Spotify setup script had issues: {setup_result['error']}")
+                    
+            except Exception as setup_error:
+                logger.warning(f"Failed to run Spotify setup script: {str(setup_error)}")
+                # Don't fail the authentication if setup script fails
+            
             # Redirect back to main page with success message
             return redirect(url_for('index') + '?spotify_auth=success')
         else:
