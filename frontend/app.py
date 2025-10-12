@@ -15,9 +15,6 @@ import base64
 import io
 import re
 import requests
-import json
-from datetime import datetime
-from collections import deque
 from dotenv import load_dotenv
 # Import will be handled later in the initialization section
 
@@ -27,126 +24,6 @@ load_dotenv()
 # Configure logging first
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-class ChatContextManager:
-    """
-    Manages chat context and history for the Gemini agent
-    """
-    
-    def __init__(self, max_context_length=10, max_tokens_per_message=500):
-        """
-        Initialize the context manager
-        
-        Args:
-            max_context_length: Maximum number of conversation turns to keep
-            max_tokens_per_message: Approximate max tokens per message for context building
-        """
-        self.max_context_length = max_context_length
-        self.max_tokens_per_message = max_tokens_per_message
-        self.chat_history = deque(maxlen=max_context_length)
-        self.session_id = None
-        self.user_preferences = {}
-        
-    def start_new_session(self, session_id=None):
-        """Start a new chat session"""
-        if session_id:
-            self.session_id = session_id
-        else:
-            self.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        self.chat_history.clear()
-        self.user_preferences = {}
-        logger.info(f"Started new chat session: {self.session_id}")
-        
-    def add_interaction(self, user_input, assistant_response, interaction_type="general"):
-        """
-        Add a user-assistant interaction to the context
-        
-        Args:
-            user_input: What the user said/asked
-            assistant_response: What the assistant responded
-            interaction_type: Type of interaction (general, music, refinement, etc.)
-        """
-        interaction = {
-            "timestamp": datetime.now().isoformat(),
-            "type": interaction_type,
-            "user_input": user_input,
-            "assistant_response": assistant_response
-        }
-        
-        self.chat_history.append(interaction)
-        logger.info(f"Added interaction to context: {interaction_type}")
-        
-    def get_context_for_prompt(self, current_input, include_recent=5):
-        """
-        Build context string for inclusion in Gemini prompts
-        
-        Args:
-            current_input: The current user input
-            include_recent: Number of recent interactions to include
-            
-        Returns:
-            Formatted context string
-        """
-        if not self.chat_history:
-            return ""
-        
-        # Get recent interactions
-        recent_interactions = list(self.chat_history)[-include_recent:]
-        
-        context_parts = []
-        context_parts.append("Previous conversation context:")
-        
-        for interaction in recent_interactions:
-            # Truncate long messages to prevent token overflow
-            user_msg = self._truncate_message(interaction["user_input"])
-            assistant_msg = self._truncate_message(interaction["assistant_response"])
-            
-            context_parts.append(f"User: {user_msg}")
-            context_parts.append(f"Assistant: {assistant_msg}")
-            context_parts.append("---")
-        
-        context_parts.append(f"Current user input: {current_input}")
-        context_parts.append("")
-        
-        return "\n".join(context_parts)
-    
-    def _truncate_message(self, message, max_length=None):
-        """Truncate message to prevent token overflow"""
-        if max_length is None:
-            max_length = self.max_tokens_per_message
-        
-        if len(message) <= max_length:
-            return message
-        
-        # Truncate and add ellipsis
-        return message[:max_length-3] + "..."
-    
-    def get_user_preferences(self):
-        """Get stored user preferences"""
-        return self.user_preferences.copy()
-    
-    def update_user_preferences(self, preferences):
-        """Update user preferences based on conversation"""
-        self.user_preferences.update(preferences)
-        logger.info(f"Updated user preferences: {preferences}")
-    
-    def clear_context(self):
-        """Clear the chat history"""
-        self.chat_history.clear()
-        logger.info("Cleared chat context")
-    
-    def get_context_summary(self):
-        """Get a summary of the current context"""
-        return {
-            "session_id": self.session_id,
-            "interaction_count": len(self.chat_history),
-            "recent_types": [interaction["type"] for interaction in list(self.chat_history)[-3:]],
-            "user_preferences": self.user_preferences
-        }
-
-# Global context manager instance
-context_manager = ChatContextManager()
 
 def test_gemini_connection():
     """
@@ -335,21 +212,13 @@ def process_music_request(voice_input):
         # Process Spotify response through Gemini for user-friendly output
         if genai and os.getenv('GEMINI_API_KEY'):
             try:
-                # Get conversation context for music processing
-                context_string = context_manager.get_context_for_prompt(voice_input)
-                user_preferences = context_manager.get_user_preferences()
-                
-                # Create a prompt to make the Spotify response more user-friendly with context
+                # Create a prompt to make the Spotify response more user-friendly
                 music_processing_prompt = f"""You are Iris, a helpful AI assistant. The user made a music request, and here's what the music service found:
-
-{context_string}
 
 User's request: {voice_input}
 Music service response: {spotify_response}
 
 Please provide a friendly, conversational response to the user about what was found. Make it sound natural and helpful, as if you're personally helping them with their music request. Keep it concise but informative.
-
-Use the conversation context to provide more personalized responses. If the user has mentioned music preferences before, reference them. If they've been asking about similar music, build upon that.
 
 IMPORTANT: If the music service response indicates any authentication, connection, or access issues, you MUST tell the user to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
 
@@ -403,37 +272,18 @@ Respond as Iris:"""
                 if response and hasattr(response, 'text') and response.text:
                     processed_response = response.text.strip()
                     logger.info(f"Gemini processed music response: {processed_response}")
-                    
-                    # Add music interaction to context manager
-                    context_manager.add_interaction(voice_input, processed_response, "music")
-                    
                     return processed_response
                 else:
                     logger.warning("Gemini returned empty response for music request")
-                    fallback_response = f"I found some music for you: {spotify_response}"
-                    
-                    # Add fallback interaction to context
-                    context_manager.add_interaction(voice_input, fallback_response, "music_fallback")
-                    
-                    return fallback_response
+                    return f"I found some music for you: {spotify_response}"
                     
             except Exception as gemini_error:
                 logger.warning(f"Gemini processing failed for music request: {gemini_error}")
-                fallback_response = f"I found some music for you: {spotify_response}"
-                
-                # Add error interaction to context
-                context_manager.add_interaction(voice_input, fallback_response, "music_error")
-                
-                return fallback_response
+                return f"I found some music for you: {spotify_response}"
         else:
             # Fallback if Gemini is not available
             logger.warning("Gemini not available, returning raw Spotify response")
-            fallback_response = f"I found some music for you: {spotify_response}"
-            
-            # Add fallback interaction to context
-            context_manager.add_interaction(voice_input, fallback_response, "music_fallback")
-            
-            return fallback_response
+            return f"I found some music for you: {spotify_response}"
             
     except Exception as e:
         logger.error(f"Error processing music request: {str(e)}")
@@ -442,7 +292,7 @@ Respond as Iris:"""
 # Get direct response from Gemini API
 def get_gemini_direct_response(voice_input):
     """
-    Use Gemini API to provide a direct response to user's voice input with context awareness
+    Use Gemini API to provide a direct response to user's voice input
     """
     if not voice_input:
         logger.warning("No voice input provided")
@@ -461,11 +311,7 @@ def get_gemini_direct_response(voice_input):
     try:
         logger.info("Making Gemini API call for direct response...")
         
-        # Get conversation context
-        context_string = context_manager.get_context_for_prompt(voice_input)
-        user_preferences = context_manager.get_user_preferences()
-        
-        # Enhanced prompt for direct response with context awareness
+        # Enhanced prompt for direct response with Spotify integration guidance and markdown support
         direct_response_prompt = f"""You are Iris, a helpful AI assistant. The user has spoken to you via voice input. Respond naturally and helpfully to what they've said.
 
 Guidelines:
@@ -476,8 +322,6 @@ Guidelines:
 5. If you're unsure what they want, ask for clarification
 6. Be helpful and proactive
 7. IMPORTANT: If the user mentions music, songs, playlists, Spotify, or any music-related requests, and you detect they might be having issues with music features, guide them to click the "Integrate with apps" button in the top right corner to connect their Spotify account.
-8. Use the conversation context to provide more relevant and personalized responses
-9. Remember previous topics and build upon them when appropriate
 
 FORMATTING GUIDELINES:
 - Use markdown formatting when appropriate to make your responses more readable
@@ -488,8 +332,6 @@ FORMATTING GUIDELINES:
 - Use [links](url) when referencing external resources
 - Use > blockquotes for important notes or warnings
 - Use ## headings for organizing longer responses into sections
-
-{context_string}
 
 User's voice input: {voice_input}
 
@@ -557,29 +399,15 @@ Respond as Iris:"""
         if response and hasattr(response, 'text') and response.text:
             direct_response = response.text.strip()
             logger.info(f"Gemini direct response: '{voice_input}' → '{direct_response}'")
-            
-            # Add interaction to context manager
-            context_manager.add_interaction(voice_input, direct_response, "general")
-            
             return direct_response
         else:
             logger.warning("Gemini returned empty response")
-            error_response = "I heard you, but I'm having trouble formulating a response. Could you try again?"
-            
-            # Add error interaction to context
-            context_manager.add_interaction(voice_input, error_response, "error")
-            
-            return error_response
+            return "I heard you, but I'm having trouble formulating a response. Could you try again?"
             
     except Exception as e:
         logger.error(f"Gemini direct response error: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
-        error_response = "I'm experiencing some technical difficulties. Please try again in a moment."
-        
-        # Add error interaction to context
-        context_manager.add_interaction(voice_input, error_response, "error")
-        
-        return error_response
+        return "I'm experiencing some technical difficulties. Please try again in a moment."
 
 
 # Refine user speech using Gemini API
@@ -677,11 +505,6 @@ Clean up this speech: {raw_speech}"""
         if response and hasattr(response, 'text') and response.text:
             refined_text = response.text.strip().strip('"\'')
             logger.info(f"Gemini refined: '{raw_speech}' → '{refined_text}'")
-            
-            # Add refinement interaction to context (but don't include in main conversation flow)
-            # This helps track speech processing patterns
-            context_manager.add_interaction(raw_speech, refined_text, "refinement")
-            
             return refined_text
         else:
             logger.warning("Gemini returned empty response")
@@ -1196,117 +1019,6 @@ def spotify_callback():
     except Exception as e:
         logger.error(f"Spotify callback error: {str(e)}")
         return redirect(url_for('index') + '?spotify_auth=error')
-
-# Context Management Endpoints
-@app.route('/api/context/start-session', methods=['POST'])
-def start_context_session():
-    """Start a new chat session with context tracking"""
-    try:
-        data = request.get_json()
-        session_id = data.get('session_id') if data else None
-        
-        context_manager.start_new_session(session_id)
-        
-        return jsonify({
-            'success': True,
-            'session_id': context_manager.session_id,
-            'message': 'New chat session started'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error starting context session: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Failed to start session: {str(e)}'
-        }), 500
-
-@app.route('/api/context/status')
-def get_context_status():
-    """Get current context status and summary"""
-    try:
-        context_summary = context_manager.get_context_summary()
-        
-        return jsonify({
-            'success': True,
-            'context': context_summary
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting context status: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Failed to get context status: {str(e)}'
-        }), 500
-
-@app.route('/api/context/clear', methods=['POST'])
-def clear_context():
-    """Clear the current chat context"""
-    try:
-        context_manager.clear_context()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Chat context cleared'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing context: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Failed to clear context: {str(e)}'
-        }), 500
-
-@app.route('/api/context/history')
-def get_context_history():
-    """Get the current chat history"""
-    try:
-        history = list(context_manager.chat_history)
-        
-        return jsonify({
-            'success': True,
-            'history': history,
-            'count': len(history)
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting context history: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Failed to get context history: {str(e)}'
-        }), 500
-
-@app.route('/api/context/preferences', methods=['GET', 'POST'])
-def manage_user_preferences():
-    """Get or update user preferences"""
-    try:
-        if request.method == 'GET':
-            # Get current preferences
-            preferences = context_manager.get_user_preferences()
-            
-            return jsonify({
-                'success': True,
-                'preferences': preferences
-            })
-            
-        elif request.method == 'POST':
-            # Update preferences
-            data = request.get_json()
-            preferences = data.get('preferences', {})
-            
-            context_manager.update_user_preferences(preferences)
-            
-            return jsonify({
-                'success': True,
-                'preferences': context_manager.get_user_preferences(),
-                'message': 'User preferences updated'
-            })
-        
-    except Exception as e:
-        logger.error(f"Error managing user preferences: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Failed to manage preferences: {str(e)}'
-        }), 500
 
 if __name__ == '__main__':
     logger.info("Starting Vocal Agent Frontend...")

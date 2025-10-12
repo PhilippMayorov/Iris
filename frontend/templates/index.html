@@ -291,6 +291,38 @@
         }
       }
 
+      /* Volume-based pulsing animations */
+      @keyframes volumePulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(var(--volume-scale, 1.05));
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      @keyframes volumeGlow {
+        0% {
+          filter: brightness(1) saturate(1);
+          box-shadow: 0 10px 40px rgba(0, 122, 255, 0.3);
+        }
+        50% {
+          filter: brightness(var(--volume-brightness, 1.1)) saturate(var(--volume-saturation, 1.2));
+          box-shadow: 0 15px 50px rgba(0, 122, 255, var(--volume-shadow, 0.4));
+        }
+        100% {
+          filter: brightness(1) saturate(1);
+          box-shadow: 0 10px 40px rgba(0, 122, 255, 0.3);
+        }
+      }
+
+      .siri-circle.volume-pulse {
+        animation: volumePulse 0.3s ease-in-out infinite, volumeGlow 0.3s ease-in-out infinite;
+      }
+
       @keyframes fadeInUp {
         from {
           opacity: 0;
@@ -886,6 +918,16 @@
       let currentAudio = null
       let currentResponseText = ''
       let preparedAudioUrl = null
+      
+      // Volume detection variables
+      let audioContext = null
+      let microphone = null
+      let analyser = null
+      let dataArray = null
+      let volumeAnimationId = null
+      let currentVolume = 0
+      let targetVolume = 0
+      let volumeSmoothing = 0.1
 
       // State Management Functions
       function setState(newState) {
@@ -1118,6 +1160,197 @@
         return responseText + connectionPrompt
       }
 
+      // Volume Detection Functions
+      async function initializeVolumeDetection() {
+        try {
+          // Request microphone access
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            } 
+          })
+          
+          // Create audio context
+          audioContext = new (window.AudioContext || window.webkitAudioContext)()
+          microphone = audioContext.createMediaStreamSource(stream)
+          analyser = audioContext.createAnalyser()
+          
+          // Configure analyser
+          analyser.fftSize = 256
+          analyser.smoothingTimeConstant = 0.8
+          const bufferLength = analyser.frequencyBinCount
+          dataArray = new Uint8Array(bufferLength)
+          
+          // Connect microphone to analyser
+          microphone.connect(analyser)
+          
+          console.log('Volume detection initialized successfully')
+          return true
+        } catch (error) {
+          console.warn('Volume detection initialization failed:', error)
+          return false
+        }
+      }
+
+      function startVolumeMonitoring() {
+        if (!analyser || !dataArray) {
+          console.warn('Volume monitoring not available - analyser or dataArray missing')
+          return
+        }
+        
+        console.log('Starting microphone volume monitoring...')
+        
+        function updateVolume() {
+          analyser.getByteFrequencyData(dataArray)
+          
+          // Calculate average volume
+          let sum = 0
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i]
+          }
+          const average = sum / dataArray.length
+          
+          // Convert to 0-1 range and apply smoothing
+          targetVolume = Math.min(average / 128, 1)
+          currentVolume += (targetVolume - currentVolume) * volumeSmoothing
+          
+          // Debug logging (only log occasionally to avoid spam)
+          if (Math.random() < 0.01) { // Log 1% of the time
+            console.log(`Mic Volume: ${currentVolume.toFixed(3)}`)
+          }
+          
+          // Update circle animation based on volume
+          updateCircleVolumeAnimation(currentVolume)
+          
+          volumeAnimationId = requestAnimationFrame(updateVolume)
+        }
+        
+        updateVolume()
+      }
+
+      function stopVolumeMonitoring() {
+        if (volumeAnimationId) {
+          cancelAnimationFrame(volumeAnimationId)
+          volumeAnimationId = null
+        }
+        
+        // Reset volume
+        currentVolume = 0
+        targetVolume = 0
+        updateCircleVolumeAnimation(0)
+      }
+
+      function updateCircleVolumeAnimation(volume) {
+        const siriCircle = document.getElementById('siriCircle')
+        if (!siriCircle) return
+        
+        // Only apply volume animation when listening
+        if (currentState === 'listening') {
+          // Calculate animation properties based on volume
+          const scale = 1 + (volume * 0.3) // Scale from 1.0 to 1.3
+          const brightness = 1 + (volume * 0.4) // Brightness from 1.0 to 1.4
+          const saturation = 1 + (volume * 0.5) // Saturation from 1.0 to 1.5
+          const shadow = 0.3 + (volume * 0.4) // Shadow opacity from 0.3 to 0.7
+          
+          // Set CSS custom properties
+          siriCircle.style.setProperty('--volume-scale', scale)
+          siriCircle.style.setProperty('--volume-brightness', brightness)
+          siriCircle.style.setProperty('--volume-saturation', saturation)
+          siriCircle.style.setProperty('--volume-shadow', shadow)
+          
+          // Add volume pulse class if volume is above threshold
+          if (volume > 0.1) {
+            siriCircle.classList.add('volume-pulse')
+            // Debug logging
+            if (Math.random() < 0.05) { // Log 5% of the time when pulsing
+              console.log(`Mic volume pulsing: ${volume.toFixed(3)}`)
+            }
+          } else {
+            siriCircle.classList.remove('volume-pulse')
+          }
+        } else {
+          // Remove volume pulse when not listening
+          siriCircle.classList.remove('volume-pulse')
+        }
+      }
+
+      function updateCircleTTSAnimation(volume) {
+        const siriCircle = document.getElementById('siriCircle')
+        if (!siriCircle) return
+        
+        // Apply TTS volume animation when responding
+        if (currentState === 'responding') {
+          // Calculate animation properties based on TTS volume
+          const scale = 1 + (volume * 0.2) // Scale from 1.0 to 1.2 (more subtle than mic)
+          const brightness = 1 + (volume * 0.3) // Brightness from 1.0 to 1.3
+          const saturation = 1 + (volume * 0.4) // Saturation from 1.0 to 1.4
+          const shadow = 0.3 + (volume * 0.3) // Shadow opacity from 0.3 to 0.6
+          
+          // Set CSS custom properties
+          siriCircle.style.setProperty('--volume-scale', scale)
+          siriCircle.style.setProperty('--volume-brightness', brightness)
+          siriCircle.style.setProperty('--volume-saturation', saturation)
+          siriCircle.style.setProperty('--volume-shadow', shadow)
+          
+          // Add volume pulse class if volume is above threshold
+          if (volume > 0.05) {
+            siriCircle.classList.add('volume-pulse')
+            // Debug logging
+            if (Math.random() < 0.1) { // Log 10% of the time when pulsing
+              console.log(`TTS volume pulsing: ${volume.toFixed(3)}`)
+            }
+          } else {
+            siriCircle.classList.remove('volume-pulse')
+          }
+        }
+      }
+
+      function setupFallbackTTSVolumeMonitoring() {
+        if (!currentAudio) return
+        
+        console.log('Setting up fallback TTS volume monitoring...')
+        
+        // Simulate TTS volume with a pulsing pattern
+        let fallbackVolumeId = null
+        let pulsePhase = 0
+        
+        function simulateTTSVolume() {
+          // Create a pulsing pattern that simulates speech rhythm
+          const baseVolume = 0.3 + Math.sin(pulsePhase) * 0.2
+          const randomVariation = Math.random() * 0.1
+          const simulatedVolume = Math.min(baseVolume + randomVariation, 0.8)
+          
+          pulsePhase += 0.3
+          
+          console.log(`Fallback TTS Volume: ${simulatedVolume.toFixed(3)}`)
+          
+          // Update circle animation
+          updateCircleTTSAnimation(simulatedVolume)
+          
+          if (!currentAudio.paused) {
+            fallbackVolumeId = requestAnimationFrame(simulateTTSVolume)
+          }
+        }
+        
+        // Start monitoring when audio starts playing
+        currentAudio.addEventListener('play', () => {
+          console.log('TTS audio started, beginning fallback volume monitoring...')
+          simulateTTSVolume()
+        })
+        
+        // Stop monitoring when audio ends
+        currentAudio.addEventListener('ended', () => {
+          console.log('TTS audio ended, stopping fallback volume monitoring...')
+          if (fallbackVolumeId) {
+            cancelAnimationFrame(fallbackVolumeId)
+            fallbackVolumeId = null
+          }
+          updateCircleTTSAnimation(0)
+        })
+      }
+
       // Initialize Web Speech API
       function initializeSpeechRecognition() {
         try {
@@ -1175,7 +1408,7 @@
       }
 
       // Toggle listening state for Siri circle
-      function toggleListening() {
+      async function toggleListening() {
         if (currentState === 'processing') {
           return // Don't allow interruption during processing
         }
@@ -1193,22 +1426,29 @@
             return
           }
 
+          // Initialize volume detection if not already done
+          if (!audioContext) {
+            await initializeVolumeDetection()
+          }
+
           finalTranscript = ''
           recognition.start()
           isListening = true
           setState('listening')
+          startVolumeMonitoring()
           console.log('Started listening...')
         } else {
           // Stop listening and start processing
           recognition.stop()
           isListening = false
           setState('processing')
+          stopVolumeMonitoring()
           console.log('Stopped listening, starting processing...')
         }
       }
 
       // Start a new request from responding state
-      function startNewRequest() {
+      async function startNewRequest() {
         clearTyping()
         const responseActions = document.getElementById('responseActions')
         responseActions.style.display = 'none'
@@ -1221,10 +1461,16 @@
           return
         }
 
+        // Initialize volume detection if not already done
+        if (!audioContext) {
+          await initializeVolumeDetection()
+        }
+
         finalTranscript = ''
         recognition.start()
         isListening = true
         setState('listening')
+        startVolumeMonitoring()
         console.log('New request started directly from responding state')
       }
 
@@ -1511,6 +1757,7 @@
       function clearResponse() {
         clearTyping()
         stopTTS() // Stop any playing audio
+        stopVolumeMonitoring() // Stop volume monitoring
         setState('idle')
         const responseActions = document.getElementById('responseActions')
         responseActions.style.display = 'none'
@@ -1527,6 +1774,7 @@
       function startNewCommand() {
         clearTyping()
         stopTTS() // Stop any playing audio
+        stopVolumeMonitoring() // Stop volume monitoring
         setState('idle')
         const responseActions = document.getElementById('responseActions')
         responseActions.style.display = 'none'
@@ -1718,6 +1966,72 @@ That's it! The markdown should render properly.`
 
         // Create and play the prepared audio
         currentAudio = new Audio(preparedAudioUrl)
+        
+        // Set up TTS volume monitoring
+        if (audioContext && currentAudio) {
+          try {
+            console.log('Setting up TTS volume monitoring...')
+            
+            // Create audio source from the playing audio
+            const audioSource = audioContext.createMediaElementSource(currentAudio)
+            const ttsAnalyser = audioContext.createAnalyser()
+            ttsAnalyser.fftSize = 256
+            ttsAnalyser.smoothingTimeConstant = 0.8
+            
+            // Connect audio source to analyser and then to destination
+            audioSource.connect(ttsAnalyser)
+            ttsAnalyser.connect(audioContext.destination)
+            
+            // Monitor TTS volume
+            const ttsDataArray = new Uint8Array(ttsAnalyser.frequencyBinCount)
+            let ttsVolumeId = null
+            
+            function monitorTTSVolume() {
+              ttsAnalyser.getByteFrequencyData(ttsDataArray)
+              
+              // Calculate average volume
+              let sum = 0
+              for (let i = 0; i < ttsDataArray.length; i++) {
+                sum += ttsDataArray[i]
+              }
+              const average = sum / ttsDataArray.length
+              const ttsVolume = Math.min(average / 128, 1)
+              
+              console.log(`TTS Volume: ${ttsVolume.toFixed(3)}`)
+              
+              // Update circle animation based on TTS volume
+              updateCircleTTSAnimation(ttsVolume)
+              
+              if (!currentAudio.paused) {
+                ttsVolumeId = requestAnimationFrame(monitorTTSVolume)
+              }
+            }
+            
+            // Start monitoring when audio starts playing
+            currentAudio.addEventListener('play', () => {
+              console.log('TTS audio started, beginning volume monitoring...')
+              monitorTTSVolume()
+            })
+            
+            // Stop monitoring when audio ends
+            currentAudio.addEventListener('ended', () => {
+              console.log('TTS audio ended, stopping volume monitoring...')
+              if (ttsVolumeId) {
+                cancelAnimationFrame(ttsVolumeId)
+                ttsVolumeId = null
+              }
+              updateCircleTTSAnimation(0)
+            })
+            
+          } catch (error) {
+            console.warn('TTS volume monitoring setup failed:', error)
+            // Fallback: simulate TTS volume based on audio element volume
+            setupFallbackTTSVolumeMonitoring()
+          }
+        } else {
+          console.warn('Audio context not available, using fallback TTS volume monitoring')
+          setupFallbackTTSVolumeMonitoring()
+        }
         
         currentAudio.onended = () => {
           URL.revokeObjectURL(preparedAudioUrl)
