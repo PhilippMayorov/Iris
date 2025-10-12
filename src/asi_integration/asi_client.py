@@ -227,62 +227,7 @@ class ASIOneClient:
         print()  # New line after streaming
         return full_text
     
-    def poll_for_async_reply(
-        self, 
-        conversation_id: str, 
-        messages: List[Dict[str, str]], 
-        model: str = "asi1-fast-agentic",
-        wait_sec: int = 5, 
-        max_attempts: int = 20
-    ) -> Optional[str]:
-        """
-        Poll for asynchronous agent responses from Agentverse.
-        
-        Args:
-            conversation_id: Conversation ID for session management
-            messages: Conversation history
-            model: Model to use for polling
-            wait_sec: Seconds to wait between polling attempts
-            max_attempts: Maximum number of polling attempts
-            
-        Returns:
-            The agent's response if available, None if no response after max attempts
-        """
-        for attempt in range(max_attempts):
-            time.sleep(wait_sec)
-            print(f"🔄 Polling (attempt {attempt + 1}/{max_attempts})...", flush=True)
-            
-            try:
-                # Create a polling message to check for updates
-                polling_messages = messages.copy()
-                polling_messages.append({
-                    "role": "user", 
-                    "content": "Please check if there are any updates from the agents I contacted. Have they completed their tasks?"
-                })
-                
-                response = self.chat_completion(polling_messages, model, conversation_id)
-                reply = response["choices"][0]["message"]["content"]
-                
-                # Check for various response patterns
-                no_response_indicators = [
-                    "no new message",
-                    "no updates",
-                    "no response",
-                    "still working",
-                    "no completion",
-                    "nothing new"
-                ]
-                
-                if reply and not any(indicator in reply.lower() for indicator in no_response_indicators):
-                    # Check if this looks like a meaningful response
-                    if len(reply.strip()) > 10 and not reply.lower().startswith("i don't"):
-                        return reply
-                    
-            except Exception as e:
-                print(f"Error during polling: {e}")
-                continue
-        
-        return None
+    # Polling method removed - communication is working fine without it
 
 
 def main():

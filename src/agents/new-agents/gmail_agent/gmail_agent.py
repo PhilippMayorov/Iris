@@ -22,6 +22,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from openai import OpenAI
 from uagents import Agent, Context, Model, Protocol
 from uagents.experimental.quota import QuotaProtocol, RateLimit
 from uagents_core.models import ErrorMessage
@@ -29,6 +30,7 @@ from uagents_core.contrib.protocols.chat import (
     AgentContent,
     ChatAcknowledgement,
     ChatMessage,
+    EndSessionContent,
     TextContent,
     chat_protocol_spec,
 )
@@ -37,6 +39,10 @@ from uagents_core.contrib.protocols.chat import (
 AGENT_NAME = os.getenv("AGENT_NAME", "Gmail Agent")
 AGENT_SEED = os.getenv("AGENT_SEED", "your_seed_phrase_here")
 PORT = int(os.getenv("PORT", "8000"))
+
+# ASI:One Configuration
+ASI_ONE_API_KEY = os.getenv("ASI_ONE_API_KEY")
+ASI_ONE_BASE_URL = "https://api.asi1.ai/v1"
 
 
 # OAuth Configuration - Add more scopes for better compatibility
@@ -66,6 +72,21 @@ agent = Agent(
     mailbox=True,
     publish_agent_details=True,
 )
+
+# Initialize ASI:One client
+asi_one_client = None
+if ASI_ONE_API_KEY:
+    try:
+        asi_one_client = OpenAI(
+            base_url=ASI_ONE_BASE_URL,
+            api_key=ASI_ONE_API_KEY,
+        )
+        print("✅ ASI:One client initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize ASI:One client: {e}")
+        asi_one_client = None
+else:
+    print("⚠️ ASI_ONE_API_KEY not found - ASI:One features will be disabled")
 
 # Models for communication
 class EmailSendRequest(Model):
@@ -370,91 +391,273 @@ chat_protocol = Protocol(spec=chat_protocol_spec)
 
 
 
-def extract_email_info(text: str) -> dict:
+def process_email_request_with_asi_one(text: str, conversation_history: list = None) -> dict:
     """
-    Extract email information from structured text format
-    
-    Expected format:
-    send
-    to: email@example.com
-    subject: Email subject
-    content: Email content
+    Process natural language email requests using ASI:One LLM with intelligent reasoning
     
     Args:
-        text: Structured text containing email request
+        text: Natural language text containing email request
+        conversation_history: List of previous conversation messages for context
         
     Returns:
         dict: Extracted email information (to, subject, body) or error info
     """
-    email_info = {
-        "to": None,
-        "subject": None,
-        "body": None,
-        "error": None,
-        "is_valid_format": False
-    }
+    if not asi_one_client:
+        return {
+            "to": None,
+            "subject": None,
+            "body": None,
+            "error": "ASI:One client not available. Please set ASI_ONE_API_KEY environment variable.",
+            "is_valid_format": False
+        }
     
-    # Check if the text starts with "send"
-    text_lower = text.strip().lower()
-    if not text_lower.startswith('send'):
-        email_info["error"] = "Command must start with 'send'. Expected format:\n\nsend\nto: email@example.com\nsubject: Email subject (optional)\ncontent: Email content"
-        return email_info
-    
-    # Remove "send" prefix and get the rest of the text
-    remaining_text = text.strip()[4:].strip()  # Remove "send" and any whitespace
-    
-    # Check if the text follows the expected structured format
-    lines = remaining_text.split('\n')
-    
-    # Look for the required field markers
-    has_to = any(line.strip().lower().startswith('to:') for line in lines)
-    has_content = any(line.strip().lower().startswith('content:') for line in lines)
-    
-    # Check if it's in the expected format
-    if not (has_to and has_content):
-        email_info["error"] = "Invalid format. Expected format:\n\nsend\nto: email@example.com\nsubject: Email subject (optional)\ncontent: Email content"
-        return email_info
-    
-    # Parse the structured format
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        if line.lower().startswith('to:'):
-            email_value = line[3:].strip()
-            # Validate email format
-            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-            if re.match(email_pattern, email_value):
-                email_info["to"] = email_value
-            else:
-                email_info["error"] = f"Invalid email format: {email_value}"
-                return email_info
-                
-        elif line.lower().startswith('subject:'):
-            email_info["subject"] = line[8:].strip()
-            
-        elif line.lower().startswith('content:'):
-            email_info["body"] = line[8:].strip()
-    
-    # Validate required fields
-    if not email_info["to"]:
-        email_info["error"] = "Missing required field: 'to:' with valid email address"
-        return email_info
+    try:
+        # Enhanced system prompt with intelligent reasoning and conversation context
+        system_prompt = """You are an intelligent Gmail assistant with advanced reasoning capabilities. Your task is to understand user intent and extract email information from ANY natural language input.
+
+CONVERSATION CONTEXT:
+- You have access to the full conversation history with this user
+- Use previous messages to understand context, references, and ongoing conversations
+- Remember information shared earlier (names, email addresses, preferences, etc.)
+- Build upon previous interactions to provide better assistance
+- If the user refers to "him", "her", "it", "that", etc., use conversation history to understand what they mean
+
+CAPABILITIES:
+- Understand conversational, casual, formal, or incomplete language
+- Infer missing information from context
+- Handle ambiguous requests intelligently
+- Use common sense and chat history to fill in details already discussed in previous turns
+- Suggest reasonable defaults when information is missing
+- Understand various ways people express email requests
+
+INTELLIGENT EXTRACTION RULES:
+1. RECIPIENT (to):
+   - Look for email addresses anywhere in the text
+   - If no email is found but a name/role is mentioned, ask for their email
+   - Accept partial emails and suggest completion
+   - Handle phrasing like “send to John” by asking for John’s email
+   - If a recipient was clearly mentioned in a previous turn, reuse it
+
+2. SUBJECT (subject):
+   - Extract explicit subjects (e.g., “subject: Meeting”)
+   - Infer subjects from context (“meeting tomorrow” → “Meeting Tomorrow”)
+   - Generate a clear and relevant subject when missing
+   - Maintain consistency with previous context if the topic is ongoing
+   - Use a conversational tone when appropriate
+
+3. CONTENT (body):
+   - Extract or compose the main message content
+   - Expand brief or incomplete inputs into full, natural-sounding emails
+   - Always ensure the message is complete — no placeholders or “fill-in-the-blank” text
+   - If essential information is missing (e.g., the sender’s name or key details), ask for it directly before finalizing
+   - Add polite greetings and closings, maintaining the user’s intended tone and style
+
+4. REASONING:
+   - Use chat history and context to maintain continuity
+   - Apply common sense when interpreting ambiguous inputs
+   - If a request is unclear, ask clarifying questions
+   - If information is missing, suggest what’s needed
+   - If a request seems incomplete, offer to help complete it
+   - Always be helpful, conversational, and context-aware
+
+EXAMPLES OF FLEXIBLE INPUTS YOU CAN HANDLE:
+- “email John about the meeting” → Ask for John’s email, suggest a subject
+- “send something to team@company.com” → Ask what to send
+- “write to Sarah” → Ask for Sarah’s email and what to write
+- “meeting tomorrow 2pm” → Ask who to send to, suggest subject/body
+- “tell the client we’re done” → Ask for client email, suggest professional message
+- "quick note to boss" → Ask for boss email, suggest brief professional note
+- If the user says "same person as before" or "same topic," reuse prior fields intelligently
+
+CONVERSATION CONTEXT EXAMPLES:
+- If user previously said "john@company.com" and now says "email him about the meeting" → Use john@company.com
+- If user mentioned "the project" earlier and now says "update the team" → Reference the project context
+- If user said "sarah is my manager" and now says "tell her we're done" → Use sarah's context
+- Build upon previous email requests and clarifications
+
+RESPONSE FORMAT:
+Always respond in this JSON format:
+{
+    "to": "email@example.com or null if missing",
+    "subject": "extracted or suggested subject",
+    "body": "extracted or suggested complete message content",
+    "is_valid": true/false,
+    "error": null or "helpful error message",
+    "reasoning": "brief explanation of what you understood and any suggestions",
+    "needs_clarification": true/false,
+    "suggestions": ["list of suggestions if clarification needed"]
+}
+
+BEHAVIOR SUMMARY:
+- Use common sense and past context from chat history
+- Never return incomplete messages
+- Always produce ready-to-send, natural emails
+- If any critical info is missing (like the recipient’s email or the sender’s name), ask clearly instead of leaving blanks
+- Keep tone adaptive, polite, and consistent with the user’s intent"""
+
+        # Build messages array with conversation history
+        messages = [{"role": "system", "content": system_prompt}]
         
-    if not email_info["body"]:
-        email_info["error"] = "Missing required field: 'content:' with message content"
-        return email_info
+        # Add conversation history if provided
+        if conversation_history:
+            messages.extend(conversation_history)
+        
+        # Add current user message
+        messages.append({"role": "user", "content": text})
+        
+        # Query ASI:One with conversation context
+        response = asi_one_client.chat.completions.create(
+            model="asi1-mini",
+            messages=messages,
+            max_tokens=1500,  # Increased for more detailed reasoning
+            temperature=0.3   # Higher temperature for more creative responses
+        )
+        
+        # Parse the response
+        response_text = response.choices[0].message.content.strip()
+        
+        # Try to extract JSON from response
+        import json
+        try:
+            # Look for JSON in the response
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                json_str = response_text[json_start:json_end]
+                result = json.loads(json_str)
+                
+                # Enhanced response handling with reasoning
+                if result.get("is_valid", False):
+                    return {
+                        "to": result.get("to"),
+                        "subject": result.get("subject", ""),
+                        "body": result.get("body"),
+                        "error": None,
+                        "is_valid_format": True,
+                        "reasoning": result.get("reasoning", ""),
+                        "needs_clarification": result.get("needs_clarification", False),
+                        "suggestions": result.get("suggestions", [])
+                    }
+                else:
+                    # Handle cases where ASI:One needs clarification
+                    if result.get("needs_clarification", False):
+                        suggestions = result.get("suggestions", [])
+                        suggestion_text = "\n".join([f"- {s}" for s in suggestions]) if suggestions else ""
+                        error_msg = f"{result.get('error', 'Need more information')}\n\nSuggestions:\n{suggestion_text}"
+                    else:
+                        error_msg = result.get("error", "Invalid email request")
+                    
+                    return {
+                        "to": result.get("to"),
+                        "subject": result.get("subject", ""),
+                        "body": result.get("body"),
+                        "error": error_msg,
+                        "is_valid_format": False,
+                        "reasoning": result.get("reasoning", ""),
+                        "needs_clarification": result.get("needs_clarification", False),
+                        "suggestions": result.get("suggestions", [])
+                    }
+            else:
+                raise ValueError("No JSON found in response")
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            # Enhanced fallback with intelligent parsing
+            return intelligent_fallback_parsing(text, response_text, str(e))
+            
+    except Exception as e:
+        return {
+            "to": None,
+            "subject": None,
+            "body": None,
+            "error": f"ASI:One processing failed: {str(e)}",
+            "is_valid_format": False
+        }
+
+
+def intelligent_fallback_parsing(original_text: str, response_text: str, error: str) -> dict:
+    """
+    Intelligent fallback parsing when ASI:One response parsing fails
     
-    # If we get here, the format is valid
-    email_info["is_valid_format"] = True
-    return email_info
+    Args:
+        original_text: Original user input
+        response_text: ASI:One response text
+        error: Parsing error message
+        
+    Returns:
+        dict: Parsed email information with helpful suggestions
+    """
+    import re
+    
+    # Try to extract email address from original text
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    email_match = re.search(email_pattern, original_text)
+    
+    # Try to extract names or roles
+    name_patterns = [
+        r'\b(?:send|email|write)\s+to\s+(\w+)',
+        r'\b(?:john|jane|sarah|mike|team|boss|client|manager)\b',
+        r'\b(?:the\s+)?(\w+)\s+(?:about|regarding)',
+    ]
+    
+    potential_recipient = None
+    for pattern in name_patterns:
+        match = re.search(pattern, original_text.lower())
+        if match:
+            potential_recipient = match.group(1) if match.groups() else match.group(0)
+            break
+    
+    # Try to extract subject hints
+    subject_hints = []
+    subject_patterns = [
+        r'\b(?:about|regarding|re:?)\s+(.+)',
+        r'\b(?:subject|title):\s*(.+)',
+        r'\b(?:meeting|project|update|proposal|invoice)\b',
+    ]
+    
+    for pattern in subject_patterns:
+        match = re.search(pattern, original_text.lower())
+        if match:
+            subject_hints.append(match.group(1) if match.groups() else match.group(0))
+    
+    # Generate helpful suggestions
+    suggestions = []
+    
+    if not email_match and not potential_recipient:
+        suggestions.append("Please specify who to send the email to (e.g., 'john@example.com' or 'send to john')")
+    elif not email_match and potential_recipient:
+        suggestions.append(f"I found '{potential_recipient}' but need their email address")
+    
+    if not subject_hints:
+        suggestions.append("Consider adding a subject (e.g., 'about the meeting' or 'subject: Project Update')")
+    
+    if len(original_text.strip()) < 20:
+        suggestions.append("Please provide more details about what you want to send")
+    
+    # Create helpful error message
+    if suggestions:
+        error_msg = f"I understand you want to send an email, but I need more information:\n\n" + "\n".join([f"- {s}" for s in suggestions])
+    else:
+        error_msg = f"Could not parse your request. Please try rephrasing or use the structured format."
+    
+    return {
+        "to": email_match.group(0) if email_match else None,
+        "subject": subject_hints[0] if subject_hints else "",
+        "body": "",
+        "error": error_msg,
+        "is_valid_format": False,
+        "reasoning": f"Fallback parsing used due to: {error}",
+        "needs_clarification": True,
+        "suggestions": suggestions
+    }
+
+
+# Structured format extraction removed - now using AI-only parsing
 
 
 @chat_protocol.on_message(ChatMessage)
 async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
     """
-    Handle chat messages for natural language email requests
+    Handle chat messages for natural language email requests with conversation context
     
     Args:
         ctx: Agent context
@@ -474,6 +677,17 @@ async def handle_chat_message(ctx: Context, sender: str, msg: ChatMessage):
             text += item.text
     
     ctx.logger.info(f"Received chat message: {text}")
+    
+    # Get conversation history for this sender
+    conversation_key = f"conversation_{sender}"
+    try:
+        conversation_history = ctx.storage.get(conversation_key)
+        if conversation_history is None:
+            conversation_history = []
+        ctx.logger.info(f"Retrieved conversation history for {sender}: {len(conversation_history)} messages")
+    except Exception as e:
+        ctx.logger.warning(f"Failed to retrieve conversation history for {sender}: {e}")
+        conversation_history = []
     
     # Check OAuth authentication status
     is_authenticated, auth_message = check_oauth_credentials()
@@ -500,36 +714,45 @@ After authentication, you can send emails normally!
 
 **Alternative:** Use the structured EmailSendRequest format for direct API access."""
         else:
-            response_text = f"""Hello! I'm your Gmail Agent assistant. ✅ {auth_message}
+            asi_one_status = "✅ ASI:One AI enabled" if asi_one_client else "⚠️ ASI:One AI disabled (set ASI_ONE_API_KEY to enable)"
+            response_text = f"""👋 Hello! I'm your intelligent Gmail assistant. ✅ {auth_message}
 
-I can assist you with:
-- Sending emails via Gmail API
-- Email management tasks
-- Remembering our conversation context
+{asi_one_status}
 
-To send an email, use this exact structured format:
+🎯 **I can help you send emails in ANY way you want to express it!**
 
-```
-send
-to: email@example.com
-subject: Email subject (optional)
-content: Email content
-```
+**Just talk to me naturally:**
+- "Send an email to john@example.com about the meeting tomorrow"
+- "Email the team about the project update" 
+- "Write to client@company.com saying we'll deliver on time"
+- "Quick note to boss about the budget"
+- "Tell sarah we're running late"
+- "Meeting tomorrow 2pm" (I'll ask who to send to!)
 
-**Example:**
-```
-send
-to: john@example.com
-subject: Meeting tomorrow
-content: Hi John, let's meet tomorrow at 2 PM to discuss the project.
-```
+**I understand:**
+- Casual, formal, or incomplete language
+- Names, roles, or email addresses
+- Context and intent
+- Missing information (I'll ask for what I need)
 
-**Notes:**
-- `to:` field is required and must contain a valid email address
-- `subject:` field is optional (email will be sent without subject if omitted)
-- `content:` field is required and contains the message body
+**💡 Don't worry about being perfect** - just tell me what you want to send and I'll figure it out! I'm here to make email sending as easy as possible.
 
-I'll remember our conversation, so you can ask follow-up questions or send multiple emails in one session. How can I help you with email today?"""
+What would you like to send today?"""
+        
+        # Update conversation history for greeting responses
+        conversation_history.append({"role": "user", "content": text})
+        conversation_history.append({"role": "assistant", "content": response_text})
+        
+        # Keep only last 10 messages to prevent context from growing too large
+        if len(conversation_history) > 20:  # 10 user + 10 assistant messages
+            conversation_history = conversation_history[-20:]
+        
+        # Store updated conversation history
+        try:
+            ctx.storage.set(conversation_key, conversation_history)
+            ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
+        except Exception as e:
+            ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
         
         await ctx.send(sender, ChatMessage(
             timestamp=datetime.utcnow(),
@@ -540,8 +763,25 @@ I'll remember our conversation, so you can ask follow-up questions or send multi
         ))
         return
     
-    # Extract email information from structured text format
-    email_info = extract_email_info(text)
+    # Use ASI:One for intelligent natural language processing with conversation context
+    if asi_one_client:
+        email_info = process_email_request_with_asi_one(text, conversation_history)
+        ctx.logger.info(f"ASI:One processing result: {email_info}")
+    else:
+        # If ASI:One is not available, provide helpful guidance
+        email_info = {
+            "to": None,
+            "subject": None,
+            "body": None,
+            "error": "ASI:One AI is required for natural language email processing. Please set ASI_ONE_API_KEY environment variable to enable intelligent email parsing.",
+            "is_valid_format": False,
+            "needs_clarification": True,
+            "suggestions": [
+                "Get your ASI:One API key from https://asi1.ai/dashboard/api-keys",
+                "Set the environment variable: export ASI_ONE_API_KEY='your_api_key_here'",
+                "Restart the agent to enable natural language processing"
+            ]
+        }
     
     # Check if the format is valid
     if not email_info["is_valid_format"]:
@@ -561,43 +801,61 @@ This will:
 ✅ Save credentials securely
 ✅ Enable email sending
 
-After authentication, you can send emails using the structured format:
-
-**Required format:**
-```
-send
-to: email@example.com
-subject: Email subject (optional)
-content: Email content
-```
+After authentication, you can send emails using natural language.
 
 {email_info["error"]}"""
         else:
-            response_text = f"""❌ {email_info["error"]}
+            asi_one_status = "✅ ASI:One AI enabled" if asi_one_client else "⚠️ ASI:One AI disabled (set ASI_ONE_API_KEY to enable)"
+            
+            # Enhanced error handling with reasoning and suggestions
+            if email_info.get("needs_clarification", False):
+                response_text = f"""🤔 I need a bit more information to help you send that email.
 
 ✅ {auth_message}
+{asi_one_status}
 
-**To send an email, use this exact format:**
+**What I understood:** {email_info.get("reasoning", "Your request")}
 
-```
-send
-to: email@example.com
-subject: Email subject (optional)
-content: Email content
-```
+**What I need:**
+{email_info["error"]}
 
-**Example:**
-```
-send
-to: john@example.com
-subject: Meeting tomorrow
-content: Hi John, let's meet tomorrow at 2 PM to discuss the project.
-```
+**💡 Try these examples:**
+- "Send an email to john@example.com about the meeting tomorrow"
+- "Email the team about the project update" 
+- "Write to sarah@company.com saying we'll deliver on time"
+- "Quick note to boss about the budget approval"
+- "email john about the meeting" (I'll ask for john's email)
+- "tell the boss we're done" (I'll ask for boss's email)"""
+            else:
+                response_text = f"""❌ {email_info["error"]}
 
-**Notes:**
-- `to:` field is required and must contain a valid email address
-- `subject:` field is optional (email will be sent without subject if omitted)
-- `content:` field is required and contains the message body"""
+✅ {auth_message}
+{asi_one_status}
+
+**Natural Language Examples:**
+- "Send an email to john@example.com about the meeting tomorrow"
+- "Email the team about the project update"
+- "Write to client@company.com saying we'll deliver on time"
+- "email john about the meeting" (I'll ask for john's email)
+- "tell the boss we're done" (I'll ask for boss's email)
+- "quick note to client" (I'll ask for client's email and what to write)
+
+**💡 Tip:** Be as specific or casual as you want - I can understand both! Just talk to me naturally!"""
+        
+        # Update conversation history for error responses
+        conversation_history.append({"role": "user", "content": text})
+        conversation_history.append({"role": "assistant", "content": response_text})
+        
+        # Keep only last 10 messages to prevent context from growing too large
+        if len(conversation_history) > 20:  # 10 user + 10 assistant messages
+            conversation_history = conversation_history[-20:]
+        
+        # Store updated conversation history
+        try:
+            ctx.storage.set(conversation_key, conversation_history)
+            ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
+        except Exception as e:
+            ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
         
         await ctx.send(sender, ChatMessage(
             timestamp=datetime.utcnow(),
@@ -623,9 +881,29 @@ content: Hi John, let's meet tomorrow at 2 PM to discuss the project.
     )
     
     if result["success"]:
-        response_text = f"✅ Email sent successfully!\n\nTo: {email_info['to']}\nSubject: {email_info['subject'] if email_info['subject'] else '(no subject)'}\nMessage ID: {result['message_id']}{subject_warning}"
+        # Enhanced success message with reasoning
+        reasoning_text = ""
+        if email_info.get("reasoning"):
+            reasoning_text = f"\n\n🧠 **AI Understanding:** {email_info['reasoning']}"
+        
+        response_text = f"✅ Email sent successfully!\n\nTo: {email_info['to']}\nSubject: {email_info['subject'] if email_info['subject'] else '(no subject)'}\nMessage ID: {result['message_id']}{subject_warning}{reasoning_text}"
     else:
         response_text = f"❌ Failed to send email: {result['error']}"
+    
+    # Update conversation history
+    conversation_history.append({"role": "user", "content": text})
+    conversation_history.append({"role": "assistant", "content": response_text})
+    
+    # Keep only last 10 messages to prevent context from growing too large
+    if len(conversation_history) > 20:  # 10 user + 10 assistant messages
+        conversation_history = conversation_history[-20:]
+    
+    # Store updated conversation history
+    try:
+        ctx.storage.set(conversation_key, conversation_history)
+        ctx.logger.info(f"Stored conversation history for {sender}: {len(conversation_history)} messages")
+    except Exception as e:
+        ctx.logger.warning(f"Failed to store conversation history for {sender}: {e}")
     
     # Send response back
     await ctx.send(sender, ChatMessage(
@@ -672,7 +950,12 @@ async def startup(ctx: Context):
         ctx.logger.warning("Users will be prompted to authenticate before sending emails")
     
     ctx.logger.info("Chat protocol enabled for natural language email requests")
-    ctx.logger.info("Using regex-based email extraction for chat messages")
+    if asi_one_client:
+        ctx.logger.info("✅ ASI:One AI integration enabled - all email parsing handled by AI")
+        ctx.logger.info("🎯 No strict formatting requirements - AI handles all parsing intelligently")
+    else:
+        ctx.logger.warning("❌ ASI:One AI integration disabled - natural language processing unavailable")
+        ctx.logger.warning("⚠️ Set ASI_ONE_API_KEY environment variable to enable email functionality")
 
 
 if __name__ == "__main__":
@@ -689,6 +972,15 @@ if __name__ == "__main__":
         print(f"\n🔐 OAuth server will be available at: {OAUTH_BASE_URL}")
         print("Users can authenticate via clickable links in chat messages")
         print("\nSee OAUTH_SETUP_GUIDE.md for detailed instructions")
+    
+    # Show ASI:One status
+    if asi_one_client:
+        print("\n✅ ASI:One AI integration enabled")
+        print("Enhanced natural language email processing available")
+    else:
+        print("\n⚠️ ASI:One AI integration disabled")
+        print("Set ASI_ONE_API_KEY environment variable to enable")
+        print("Get your API key at: https://asi1.ai/dashboard/api-keys")
     
     print("\nStarting agent...")
     agent.run()

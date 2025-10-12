@@ -95,40 +95,33 @@ class AgenticChat:
         Returns:
             Default system prompt string
         """
-        return """You are an intelligent AI assistant with access to the Agentverse marketplace. You can autonomously discover and coordinate with specialized agents to help users accomplish their goals.
+        return """You are an intelligent AI assistant with access to the Agentverse marketplace. 
+You can autonomously discover, understand, and coordinate with specialized agents to help users accomplish their goals.
 
 Your capabilities include:
-- Discovering and working with agents from the Agentverse marketplace
+- Discovering and collaborating with agents from the Agentverse marketplace
+- Reading and interpreting each agent’s README or metadata to understand its capabilities, input/output formats, and expected behaviors
 - Coordinating multi-agent workflows
-- Providing helpful, accurate, and contextually appropriate responses
-- Maintaining conversation context and session state
-- Processing both immediate requests and asynchronous agent tasks
+- Maintaining context and session state across interactions
+- Providing accurate, helpful, and contextually appropriate responses
+- Communicating directly with deployed agents
 
-IMPORTANT: You have access to a Gmail Agent with the address: agent1qw6kgumlfqp9drr54qsfngdkz50vgues3u7sewg2fgketekqk8hz500ytg3
-
-When users request email-related tasks, you should:
-1. Use the Gmail Agent to send emails
-2. Format email requests properly using the structured format:
-   ```
-   send
-   to: email@example.com
-   subject: Email subject (optional)
-   content: Email content
-   ```
-3. Wait for confirmation that the email was sent successfully
-4. Provide clear feedback to the user about the email status
+When interacting with any agent:
+1. Always read the agent’s README or manifest to understand its purpose and data requirements before sending a request.
+2. Format your request exactly as the README specifies.
+3. **Never execute actions that could affect users or others (e.g., sending emails, posting data, executing code) without first confirming all key details with the user — such as message content, subject lines, recipients, or parameters.**
+4. Clearly present a summary of what you plan to do and wait for explicit user confirmation before proceeding.
+5. If the README or user intent is unclear, ask clarifying questions before taking any action.
 
 You should:
 - Be helpful, friendly, and professional
-- Clearly explain what you're doing when working with agents
-- Provide detailed responses when appropriate
-- Ask clarifying questions when needed
-- Maintain a consistent personality throughout the conversation
-- Always confirm email sending status with users
+- Explain your reasoning briefly when coordinating with agents
+- Keep responses concise and clear, but provide detail when necessary
+- Ask clarifying questions when user intent or agent requirements are ambiguous
+- Maintain a consistent and approachable personality throughout the session
+- Strive to leverage the agent ecosystem effectively to deliver the best results
 
-Keep your responses short, concise, and polite.
-
-Always strive to be the most helpful assistant possible while leveraging the power of the agent ecosystem."""
+Always aim to be the most capable, context-aware, and cooperative assistant possible while working within the Agentverse."""
         
     def initialize_client(self) -> bool:
         """Initialize the ASI One client."""
@@ -232,40 +225,7 @@ For example: "Send an email to john@example.com about the meeting. Tell him we n
             self.add_message("user", user_message)
             self.add_message("assistant", assistant_message)
             
-            # Check for async agent responses - improved detection
-            async_indicators = [
-                "I've sent the message",
-                "working on",
-                "sending email",
-                "gmail agent",
-                "email sent",
-                "message sent",
-                "agent1q",  # Agent addresses
-                "agentverse",
-                "deployed agent"
-            ]
-            
-            is_async_request = any(indicator.lower() in assistant_message.lower() for indicator in async_indicators)
-            
-            if is_async_request:
-                print("\n🔄 Agent is working on your request...")
-                self.logger.info("ASYNC: Agent is working on request...")
-                
-                # Use a more specific polling approach for Gmail agent
-                follow_up = self.client.poll_for_async_reply(
-                    self.conversation_id, 
-                    self.conversation_history.copy(),
-                    model=self.model
-                )
-                if follow_up:
-                    print(f"\n🤖 Agent completed: {follow_up}")
-                    self.logger.info(f"ASYNC_COMPLETE: {follow_up}")
-                    self.add_message("assistant", follow_up)
-                    assistant_message += f"\n\n[Agent completed]: {follow_up}"
-                else:
-                    self.logger.info("ASYNC: No follow-up response received")
-                    # Add a note about potential delay
-                    assistant_message += "\n\n[Note: Agent response may be delayed. Please wait a moment and try again if needed.]"
+            # Communication is working fine - no polling needed
             
             return assistant_message
             
@@ -309,14 +269,14 @@ Agentic Capabilities:
   • Autonomous agent discovery from Agentverse marketplace
   • Real-time streaming responses
   • Session persistence across interactions
-  • Asynchronous agent task processing
+  • Direct agent communication
   • Multi-agent workflow coordination
 
 📧 Gmail Agent Integration:
   • Gmail Agent Address: {GmailAgentHelper.GMAIL_AGENT_ADDRESS}
   • Send emails through natural language requests
   • Automatic email request detection and formatting
-  • Real-time email sending status updates
+  • Direct communication with Gmail agent
 
 Example requests:
   "Send an email to john@example.com about the meeting tomorrow"

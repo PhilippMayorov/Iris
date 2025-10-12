@@ -6,5 +6,129 @@
             "requests": 2,
             "max_requests": 10
         }
-    }
+    },
+    "conversation_agent1qvw3kjv5ay5tfk9kv0r835zzkyk8yg36crgw2e595suxrn8k5yk5s39w6zu": [
+        {
+            "role": "user",
+            "content": ""
+        },
+        {
+            "role": "assistant",
+            "content": "👋 Hello! I'm your intelligent Gmail assistant. ✅ Authenticated as: ben.petlach@gmail.com\n\n✅ ASI:One AI enabled\n\n🎯 **I can help you send emails in ANY way you want to express it!**\n\n**Just talk to me naturally:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to client@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget\"\n- \"Tell sarah we're running late\"\n- \"Meeting tomorrow 2pm\" (I'll ask who to send to!)\n\n**I understand:**\n- Casual, formal, or incomplete language\n- Names, roles, or email addresses\n- Context and intent\n- Missing information (I'll ask for what I need)\n\n**💡 Don't worry about being perfect** - just tell me what you want to send and I'll figure it out! I'm here to make email sending as easy as possible.\n\nWhat would you like to send today?"
+        },
+        {
+            "role": "user",
+            "content": ""
+        },
+        {
+            "role": "assistant",
+            "content": "👋 Hello! I'm your intelligent Gmail assistant. ✅ Authenticated as: ben.petlach@gmail.com\n\n✅ ASI:One AI enabled\n\n🎯 **I can help you send emails in ANY way you want to express it!**\n\n**Just talk to me naturally:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to client@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget\"\n- \"Tell sarah we're running late\"\n- \"Meeting tomorrow 2pm\" (I'll ask who to send to!)\n\n**I understand:**\n- Casual, formal, or incomplete language\n- Names, roles, or email addresses\n- Context and intent\n- Missing information (I'll ask for what I need)\n\n**💡 Don't worry about being perfect** - just tell me what you want to send and I'll figure it out! I'm here to make email sending as easy as possible.\n\nWhat would you like to send today?"
+        },
+        {
+            "role": "user",
+            "content": ""
+        },
+        {
+            "role": "assistant",
+            "content": "❌ Gmail authentication required!\n\nOAuth token not found. Please authenticate using the provided link.\n\n🔐 To send emails, you need to authenticate with your Google account.\n\n**Click here to authenticate:**\n🔗 http://localhost:8080\n\nThis will:\n✅ Open your browser\n✅ Request permission to send emails  \n✅ Save credentials securely\n✅ Enable email sending\n\nAfter authentication, you can send emails normally!\n\n**Alternative:** Use the structured EmailSendRequest format for direct API access."
+        },
+        {
+            "role": "user",
+            "content": "tell philipp how tired i am from this hackathon"
+        },
+        {
+            "role": "assistant",
+            "content": "❌ Failed to send email: Authentication required: OAuth token not found. Please authenticate using the provided link."
+        },
+        {
+            "role": "user",
+            "content": "done"
+        },
+        {
+            "role": "assistant",
+            "content": "❌ Failed to send email: Authentication required: OAuth authentication failed: Authorized user info was not in the expected format, missing fields refresh_token."
+        },
+        {
+            "role": "user",
+            "content": "tell philipp how tired i am from this hackathon\n\n"
+        },
+        {
+            "role": "assistant",
+            "content": "❌ Failed to send email: Authentication required: OAuth authentication failed: Authorized user info was not in the expected format, missing fields refresh_token."
+        },
+        {
+            "role": "user",
+            "content": "try now"
+        },
+        {
+            "role": "assistant",
+            "content": "❌ Failed to send email: Authentication required: OAuth authentication failed: Authorized user info was not in the expected format, missing fields refresh_token."
+        },
+        {
+            "role": "user",
+            "content": "try now"
+        },
+        {
+            "role": "assistant",
+            "content": "✅ Email sent successfully!\n\nTo: philipp.mayorov04@gmail.com\nSubject: Exhausted from the Hackathon\nMessage ID: 199d680b064c105f\n\n🧠 **AI Understanding:** User wants to email Philipp about being tired from a hackathon. Using previously provided email for Philipp and Ben as sender name from authentication context. Created a friendly, personal email expressing exhaustion from the hackathon event."
+        },
+        {
+            "role": "user",
+            "content": "what's my name"
+        },
+        {
+            "role": "assistant",
+            "content": "🤔 I need a bit more information to help you send that email.\n\n✅ Authenticated as: ben.petlach@gmail.com\n✅ ASI:One AI enabled\n\n**What I understood:** User is asking for their name but I don't have this information stored. This is an authentication/context question rather than an email composition request.\n\n**What I need:**\nI don't have your name information in the current context. Could you please tell me what name you'd like me to use for your emails?\n\nSuggestions:\n- Please provide your name so I can use it in email signatures\n- Would you like me to use a specific name when sending emails on your behalf?\n- This helps me personalize your email messages properly\n\n**💡 Try these examples:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to sarah@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget approval\"\n- \"email john about the meeting\" (I'll ask for john's email)\n- \"tell the boss we're done\" (I'll ask for boss's email)"
+        },
+        {
+            "role": "user",
+            "content": "who have you sent emails to"
+        },
+        {
+            "role": "assistant",
+            "content": "🤔 I need a bit more information to help you send that email.\n\n✅ Authenticated as: ben.petlach@gmail.com\n✅ ASI:One AI enabled\n\n**What I understood:** Fallback parsing used due to: No JSON found in response\n\n**What I need:**\nI understand you want to send an email, but I need more information:\n\n- Please specify who to send the email to (e.g., 'john@example.com' or 'send to john')\n- Consider adding a subject (e.g., 'about the meeting' or 'subject: Project Update')\n\n**💡 Try these examples:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to sarah@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget approval\"\n- \"email john about the meeting\" (I'll ask for john's email)\n- \"tell the boss we're done\" (I'll ask for boss's email)"
+        }
+    ],
+    "conversation_agent1qdg9evlfcccsqhspjl4063hvrekqyxvt7s242gdfww85k6j2slfguklflap": [
+        {
+            "role": "user",
+            "content": " tell my brother that I graduated!"
+        },
+        {
+            "role": "assistant",
+            "content": "🤔 I need a bit more information to help you send that email.\n\n✅ Authenticated as: ben.petlach@gmail.com\n✅ ASI:One AI enabled\n\n**What I understood:** User wants to share graduation news with their brother. I've drafted a warm, celebratory message but need the recipient's email address to complete the request.\n\n**What I need:**\nI need your brother's email address to send this message\n\nSuggestions:\n- What's your brother's email address?\n- Would you like me to send this to a specific email?\n- Should I use the same email as previous messages if available?\n\n**💡 Try these examples:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to sarah@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget approval\"\n- \"email john about the meeting\" (I'll ask for john's email)\n- \"tell the boss we're done\" (I'll ask for boss's email)"
+        },
+        {
+            "role": "user",
+            "content": "send\nto: petlachben@gmail.com\nsubject: Graduation News!\ncontent: Hey! Just wanted to let you know I graduated! So excited to celebrate with you soon."
+        },
+        {
+            "role": "assistant",
+            "content": "✅ Email sent successfully!\n\nTo: petlachben@gmail.com\nSubject: Graduation News!\nMessage ID: 199d66e7b9bb532c\n\n🧠 **AI Understanding:** User provided complete email details including recipient email, subject, and message content. The email is ready to send as-is with a personal celebratory tone."
+        },
+        {
+            "role": "user",
+            "content": " tell my brother that i graduated!"
+        },
+        {
+            "role": "assistant",
+            "content": "✅ Email sent successfully!\n\nTo: petlachben@gmail.com\nSubject: Graduation News!\nMessage ID: 199d66efb5e4d5f0\n\n🧠 **AI Understanding:** User wants to tell their brother about graduating. I'm using the same brother's email address (petlachben@gmail.com) and message content from the previous successful email send to maintain consistency, as this appears to be the same recipient and context."
+        },
+        {
+            "role": "user",
+            "content": " tell my brother that i graduated!"
+        },
+        {
+            "role": "assistant",
+            "content": "✅ Email sent successfully!\n\nTo: petlachben@gmail.com\nSubject: Graduation News!\nMessage ID: 199d66fb0a406359\n\n🧠 **AI Understanding:** Using the same brother's email address and message content from previous successful sends as this appears to be the same recipient and context."
+        },
+        {
+            "role": "user",
+            "content": "send\nto:\nsubject: Graduation News!\ncontent: Hey, just wanted to let you know that I graduated!"
+        },
+        {
+            "role": "assistant",
+            "content": "🤔 I need a bit more information to help you send that email.\n\n✅ Authenticated as: ben.petlach@gmail.com\n✅ ASI:One AI enabled\n\n**What I understood:** User provided subject and content but missing recipient email address. Based on conversation history, I know the user's brother is petlachben@gmail.com from previous emails about graduation news.\n\n**What I need:**\nRecipient email address is missing\n\nSuggestions:\n- Should I send this to your brother at petlachben@gmail.com (from previous emails)?\n- Or do you want to send to a different email address?\n\n**💡 Try these examples:**\n- \"Send an email to john@example.com about the meeting tomorrow\"\n- \"Email the team about the project update\" \n- \"Write to sarah@company.com saying we'll deliver on time\"\n- \"Quick note to boss about the budget approval\"\n- \"email john about the meeting\" (I'll ask for john's email)\n- \"tell the boss we're done\" (I'll ask for boss's email)"
+        }
+    ]
 }
