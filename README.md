@@ -1,4 +1,4 @@
-# Vocal Agent
+# Vocal Agent (WON 1st place for best usecase of Fetch.ai at Dearbon Hacks)
 
 A voice-driven AI assistant that uses **Fetch.ai uAgents** for autonomous task execution and **Google Gemini** for reasoning. It captures voice input via **ElevenLabs Speech-to-Text API**, interprets user intent using Gemini, and executes actions (e.g., scheduling events, sending emails, creating notes).
 
