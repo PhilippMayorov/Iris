@@ -2,6 +2,15 @@
 
 A voice-driven AI assistant that uses **Fetch.ai uAgents** for autonomous task execution and **Google Gemini** for reasoning. It captures voice input via **ElevenLabs Speech-to-Text API**, interprets user intent using Gemini, and executes actions (e.g., scheduling events, sending emails, creating notes).
 
+## Picture Image:
+
+![Irisi Picture](https://github.com/user-attachments/assets/adcfb3cb-202c-4412-a977-74f7af11fce0)
+
+
+## Dev Post Link: https://devpost.com/software/iris-289wtl
+
+
+
 ## 🏗️ Project Structure
 
 ```
